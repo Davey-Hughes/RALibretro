@@ -25,9 +25,9 @@ along with RALibretro.  If not, see <http://www.gnu.org/licenses/>.
 
 // explicitly define APIs needed by hasher
 typedef unsigned char BYTE;
-unsigned int RA_IdentifyHash(const char* sHash);
-void RA_ActivateGame(unsigned int nGameId);
-void RA_OnLoadNewRom(BYTE* pROMData, unsigned int nROMSize);
+extern "C" unsigned int RA_IdentifyHash(const char* sHash);
+extern "C" void RA_ActivateGame(unsigned int nGameId);
+extern "C" void RA_OnLoadNewRom(BYTE* pROMData, unsigned int nROMSize);
 
 #endif
 

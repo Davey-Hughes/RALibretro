@@ -20,7 +20,9 @@ along with RALibretro.  If not, see <http://www.gnu.org/licenses/>.
 #define WINDOWS_IGNORE_PACKING_MISMATCH 1 // prevent "Windows headers require the default packing option" error - need to upgrade SDL library to fix it
 
 #include <SDL.h>
+#ifdef _WIN32
 #include <SDL_syswm.h>
+#endif
 
 #include "Application.h"
 #include "Util.h"
@@ -41,12 +43,12 @@ void getGameName(char name[], size_t len)
   name[len - 1] = '\0';
 }
 
-void pause()
+void pauseEmulator()
 {
   app.pauseGame(true);
 }
 
-void resume()
+void resumeEmulator()
 {
   app.pauseGame(false);
 }
@@ -79,7 +81,7 @@ int main(int argc, char* argv[])
 
   if (ok)
   {
-#if defined(MINGW) || defined(__MINGW32__) || defined(__MINGW64__)
+#if !defined(_MSC_VER) || defined(MINGW) || defined(__MINGW32__) || defined(__MINGW64__)
     app.run();
 #else
     __try

@@ -961,7 +961,7 @@ bool libretro::Core::getDiscPath(unsigned index, std::string& path) const
 
 bool libretro::Core::getVfsInterface(struct retro_vfs_interface_info* data)
 {
-  _logger->debug(TAG "Unimplemented env call: %s", name);
+  _logger->debug(TAG "Unimplemented env call: %s", "GET_VFS_INTERFACE");
   return false;
 }
 
