@@ -50,7 +50,9 @@ void RA_ActivateGame(unsigned int nGameId) { }
 
 void RA_OnLoadNewRom(BYTE* pROMData, unsigned int nROMSize) { }
 
-int RA_ConfirmLoadNewRom(int bIsQuitting) { return 0; }
+/* 0 means "the user cancelled", which makes Application::unloadGame() bail and
+   the app refuse to quit. With no integration there is nothing to confirm. */
+int RA_ConfirmLoadNewRom(int bIsQuitting) { return 1; }
 
 void RA_DoAchievementsFrame(void) { }
 
@@ -66,7 +68,8 @@ const char* RA_UserName(void) { return ""; }
 
 int RA_HardcoreModeIsActive(void) { return 0; }
 
-int RA_WarnDisableHardcore(const char* sActivity) { return 0; }
+/* returns whether the activity may proceed; hardcore is never active here */
+int RA_WarnDisableHardcore(const char* sActivity) { return 1; }
 
 void RA_DisableHardcore(void) { }
 
