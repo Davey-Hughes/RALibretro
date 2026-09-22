@@ -1,0 +1,81 @@
+/* No-op RetroAchievements integration for the native Linux build.
+ * The real implementation loads RA_Integration.dll, which does not exist on
+ * Linux yet; these stubs let the rest of the frontend build and run. */
+
+#include "RA_Interface.h"
+
+#include <cstring>
+
+void RA_Init(HWND hMainHWND, int nEmulatorID, const char* sClientVersion) { }
+
+void RA_InitClient(HWND hMainHWND, const char* sClientName, const char* sClientVersion) { }
+
+void RA_SetForceRepaint(int bEnable) { }
+
+HMENU RA_CreatePopupMenu(void) { return nullptr; }
+
+int RA_GetPopupMenuItems(RA_MenuItem *pItems) { return 0; }
+
+void RA_InvokeDialog(LPARAM nID) { }
+
+void RA_SetUserAgentDetail(const char* sDetail) { }
+
+void RA_AttemptLogin(int bBlocking) { }
+
+void RA_SetConsoleID(unsigned int nConsoleID) { }
+
+void RA_ClearMemoryBanks(void) { }
+
+void RA_InstallMemoryBank(int nBankID, RA_ReadMemoryFunc pReader, RA_WriteMemoryFunc pWriter, int nBankSize) { }
+
+void RA_InstallMemoryBankBlockReader(int nBankID, RA_ReadMemoryBlockFunc pReader) { }
+
+void RA_Shutdown(void) { }
+
+int RA_IsOverlayFullyVisible(void) { return 0; }
+
+void RA_SetPaused(bool bIsPaused) { }
+
+void RA_NavigateOverlay(struct ControllerInput* pInput) { }
+
+void RA_UpdateRenderOverlay(HDC, struct ControllerInput* pInput, float, RECT*, bool, bool) { }
+
+void RA_UpdateHWnd(HWND hMainHWND) { }
+
+unsigned int RA_IdentifyRom(BYTE* pROMData, unsigned int nROMSize) { return 0; }
+
+unsigned int RA_IdentifyHash(const char* sHash) { return 0; }
+
+void RA_ActivateGame(unsigned int nGameId) { }
+
+void RA_OnLoadNewRom(BYTE* pROMData, unsigned int nROMSize) { }
+
+int RA_ConfirmLoadNewRom(int bIsQuitting) { return 0; }
+
+void RA_DoAchievementsFrame(void) { }
+
+void RA_SuspendRepaint(void) { }
+
+void RA_ResumeRepaint(void) { }
+
+void RA_HandleHTTPResults(void) { }
+
+void RA_UpdateAppTitle(const char* sCustomMessage) { }
+
+const char* RA_UserName(void) { return ""; }
+
+int RA_HardcoreModeIsActive(void) { return 0; }
+
+int RA_WarnDisableHardcore(const char* sActivity) { return 0; }
+
+void RA_DisableHardcore(void) { }
+
+void RA_OnReset(void) { }
+
+void RA_OnSaveState(const char* sFilename) { }
+
+void RA_OnLoadState(const char* sFilename) { }
+
+int RA_CaptureState(char* pBuffer, int nBufferSize) { return 0; }
+
+void RA_RestoreState(const char* pBuffer) { }
