@@ -1407,8 +1407,10 @@ static SDL_Scancode WindowsScanCodeToSDLScanCode(LPARAM lparam, WPARAM wparam)
 {
   switch (wparam)
   {
+#ifdef _WIN32
     case VK_PAUSE: return SDL_SCANCODE_PAUSE;
     case VK_NUMLOCK: return SDL_SCANCODE_NUMLOCKCLEAR;
+#endif
   }
 
   int nScanCode = (lparam >> 16) & 0xFF;
@@ -1480,6 +1482,7 @@ static SDL_Scancode WindowsScanCodeToSDLScanCode(LPARAM lparam, WPARAM wparam)
   return code;
 }
 
+#ifdef _WIN32 /* these dialogs are built from Win32 dialog templates */
 class ChangeInputDialog : public Dialog
 {
 public:
@@ -1986,6 +1989,22 @@ protected:
   }
 };
 
+#else /* !_WIN32 */
+
+void KeyBinds::showControllerDialog(Input& input, int port)
+{
+  (void)input; (void)port;
+  _logger->warn("[KEY] controller binding dialog is not implemented on this platform");
+}
+
+void KeyBinds::showHotKeyDialog(Input& input)
+{
+  (void)input;
+  _logger->warn("[KEY] hotkey binding dialog is not implemented on this platform");
+}
+
+#endif /* _WIN32 */
+#ifdef _WIN32
 void KeyBinds::showControllerDialog(Input& input, int port)
 {
   char label[32];
@@ -2031,3 +2050,4 @@ void KeyBinds::showHotKeyDialog(Input& input)
   if (db.show())
     _bindings = db.getBindings();
 }
+#endif /* _WIN32 */

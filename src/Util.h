@@ -74,14 +74,10 @@ namespace util
   std::string directory(const std::string& path);
   bool getFiles(const std::string& path, const std::string& extension, std::vector<std::string>& matches);
 
-#ifdef _WINDOWS
   void        ensureDirectoryExists(const std::string& path);
-#endif
 
-#ifdef _WINDOWS
   std::string openFileDialog(HWND hWnd, const std::string& extensionsFilter, const std::string& initialDirectory);
   std::string saveFileDialog(HWND hWnd, const std::string& extensionsFilter, const char* defaultExtension, const std::string& initialDirectory);
-#endif
 
   const void* toPng(Logger* logger, const void* data, unsigned width, unsigned height, unsigned pitch, enum retro_pixel_format format, int* len);
   const void* toRgb(Logger* logger, const void* data, unsigned width, unsigned height, unsigned pitch, enum retro_pixel_format format);

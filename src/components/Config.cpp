@@ -29,13 +29,26 @@ along with RALibretro.  If not, see <http://www.gnu.org/licenses/>.
 #ifdef _WINDOWS
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#endif
 
 extern HWND g_mainWindow;
-#endif
 
 #include <string.h>
 #include <sys/stat.h>
 #include <unordered_map>
+
+#ifndef RA_DIR_SEP
+ #ifdef _WIN32
+  #define RA_DIR_SEP "\\"
+  #define RA_DIR_SEP_CHAR '\\'
+  #define RA_CORE_EXT ".dll"
+ #else
+  #define RA_DIR_SEP "/"
+  #define RA_DIR_SEP_CHAR '/'
+  #define RA_CORE_EXT ".so"
+ #endif
+#endif
+
 
 #define TAG "[CFG] "
 
@@ -50,16 +63,25 @@ void Config::initRootFolder()
   len = GetFullPathNameW(path, MAX_PATH, fullpath, NULL);
 
   _rootFolder = util::ucharToUtf8(fullpath);
+#else
+  /* resolve the directory the executable lives in */
+  char exePath[4096];
+  const ssize_t nLength = ::readlink("/proc/self/exe", exePath, sizeof(exePath) - 1);
+  if (nLength > 0)
+  {
+    exePath[nLength] = '\0';
+    _rootFolder = exePath;
+  }
 #endif
 
-  size_t index = _rootFolder.find_last_of('\\');
+  size_t index = _rootFolder.find_last_of(RA_DIR_SEP_CHAR);
   if (index != std::string::npos)
   {
     _rootFolder.resize(index + 1);
   }
   else
   {
-    _rootFolder = ".\\";
+    _rootFolder = "." RA_DIR_SEP;
   }
 }
 
@@ -67,13 +89,15 @@ bool Config::init(libretro::LoggerComponent* logger)
 {
   _logger = logger;
 
-  _assetsFolder = _rootFolder + "Assets\\";
-  _saveFolder = _rootFolder + "Saves\\";
-  _systemFolder = _rootFolder + "System\\";
-  _screenshotsFolder = _rootFolder + "Screenshots\\";
+  _assetsFolder = _rootFolder + "Assets" RA_DIR_SEP;
+  _saveFolder = _rootFolder + "Saves" RA_DIR_SEP;
+  _systemFolder = _rootFolder + "System" RA_DIR_SEP;
+  _screenshotsFolder = _rootFolder + "Screenshots" RA_DIR_SEP;
 
 #ifdef WIN32
  #define mkdir(path) CreateDirectory(path, NULL)
+#else
+ #define mkdir(path) ra_compat_mkdir(path)
 #endif
 
   mkdir(_assetsFolder.c_str());
@@ -88,7 +112,7 @@ bool Config::init(libretro::LoggerComponent* logger)
   _logger->info(TAG "Screenshots folder: %s", _screenshotsFolder.c_str());
 
   // TODO This should be done in main.cpp as soon as possible
-  SetCurrentDirectory(_rootFolder.c_str());
+  ra_compat_chdir(_rootFolder.c_str());
 
   // these settings are global and should not be modified by reset()
   _audioWhileFastForwarding = true;

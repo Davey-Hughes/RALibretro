@@ -19,9 +19,7 @@ along with RALibretro.  If not, see <http://www.gnu.org/licenses/>.
 
 #pragma once
 
-#ifdef _WINDOWS
- #include "components/Input.h"
-#endif
+#include "components/Input.h"
 
 #include "libretro/Components.h"
 
@@ -85,10 +83,8 @@ public:
   std::string serializeEmulatorSettings() const;
   bool deserializeEmulatorSettings(const char* json);
 
-#ifdef _WINDOWS
   void showDialog(const std::string& coreName, Input& input);
   void showEmulatorSettingsDialog();
-#endif
 
 protected:
   static const char* s_getOption(int index, void* udata);

@@ -19,7 +19,11 @@ along with RALibretro.  If not, see <http://www.gnu.org/licenses/>.
 
 #pragma once
 
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include <wtypes.h>
+#endif
 #include <vector>
 
 class Dialog

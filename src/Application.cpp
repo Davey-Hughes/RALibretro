@@ -20,7 +20,9 @@ along with RALibretro.  If not, see <http://www.gnu.org/licenses/>.
 #include "Application.h"
 #include "RA_BuildVer.h"
 
+#ifdef _WIN32
 #include <SDL_syswm.h>
+#endif
 
 #include "libretro/Core.h"
 #include "jsonsax/jsonsax.h"
@@ -45,10 +47,32 @@ along with RALibretro.  If not, see <http://www.gnu.org/licenses/>.
 #include <sys/stat.h>
 
 #define WIN32_LEAN_AND_MEAN
+#ifdef _WIN32
 #include <windows.h>
+#endif
+#ifdef _WIN32
 #include <winuser.h>
+#endif
+#ifdef _WIN32
 #include <commdlg.h>
+#endif
+#ifdef _WIN32
 #include <shlobj.h>
+
+#endif
+
+#ifndef RA_DIR_SEP
+ #ifdef _WIN32
+  #define RA_DIR_SEP "\\"
+  #define RA_DIR_SEP_CHAR '\\'
+  #define RA_CORE_EXT ".dll"
+ #else
+  #define RA_DIR_SEP "/"
+  #define RA_DIR_SEP_CHAR '/'
+  #define RA_CORE_EXT ".so"
+ #endif
+#endif
+
 
 #define TAG "[APP] "
 
@@ -199,6 +223,7 @@ bool Application::init(const char* title, int width, int height)
   }
   else
   {
+#ifdef _WIN32
     SDL_SysWMinfo wminfo;
     SDL_VERSION(&wminfo.version);
 
@@ -211,6 +236,7 @@ bool Application::init(const char* title, int width, int height)
     g_mainWindow = wminfo.info.win.window;
     _menu = LoadMenu(NULL, "MAIN");
     SetMenu(g_mainWindow, _menu);
+#endif
 
     SDL_SetWindowSize(_window, width, height);
 
@@ -306,7 +332,7 @@ bool Application::init(const char* title, int width, int height)
 
     if (!loadCores(&_config, &_logger))
     {
-      MessageBox(g_mainWindow, "Could not open Cores\\cores.json.", "Initialization failed", MB_OK);
+      MessageBox(g_mainWindow, "Could not open Cores/cores.json.", "Initialization failed", MB_OK);
       goto error;
     }
 
@@ -743,9 +769,9 @@ bool Application::loadCore(const std::string& coreName)
   }
 
   std::string path = _config.getRootFolder();
-  path += "Cores\\";
+  path += "Cores" RA_DIR_SEP;
   path += coreName;
-  path += ".dll";
+  path += RA_CORE_EXT;
 
   // open the core and fetch all the hooks
   if (!_core.loadCore(path.c_str()))
@@ -905,7 +931,7 @@ bool Application::validateHardcoreEnablement()
   if (_config.validateSettingsForHardcore(_core.getSystemInfo()->library_name, _system, false))
     return true;
 
-#if defined(MINGW) || defined(__MINGW32__) || defined(__MINGW64__)
+#if !defined(_MSC_VER) || defined(MINGW) || defined(__MINGW32__) || defined(__MINGW64__)
   RA_DisableHardcore();
 #else
   __try
@@ -1852,7 +1878,7 @@ std::string Application::getConfigPath()
 std::string Application::getCoreConfigPath(const std::string& coreName)
 {
   std::string path = _config.getRootFolder();
-  path += "Cores\\";
+  path += "Cores" RA_DIR_SEP;
   path += coreName;
   path += ".json";
   return path;
@@ -2351,6 +2377,7 @@ void Application::toggleFullscreen()
 
 void Application::handle(const SDL_SysWMEvent* syswm)
 {
+#ifdef _WIN32
   if (syswm->msg->msg.win.msg == WM_COMMAND)
   {
     WORD cmd = LOWORD(syswm->msg->msg.win.wParam);
@@ -2520,9 +2547,9 @@ void Application::handle(const SDL_SysWMEvent* syswm)
         if (coreName != _coreName) // cannot update active core, so don't check if it's outdated
         {
           std::string path = _config.getRootFolder();
-          path += "Cores\\";
+          path += "Cores" RA_DIR_SEP;
           path += coreName;
-          path += ".dll";
+          path += RA_CORE_EXT;
 
           const time_t coreUpdated = util::fileTime(path);
           const time_t coreAge = time(NULL) - coreUpdated;
@@ -2545,6 +2572,9 @@ void Application::handle(const SDL_SysWMEvent* syswm)
       break;
     }
   }
+#else
+  (void)syswm;
+#endif
 }
 
 void Application::handle(const SDL_WindowEvent* window)

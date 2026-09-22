@@ -354,6 +354,13 @@ void util::deleteFile(const std::string& path)
 #ifndef _CONSOLE // don't include in RAHasher
 bool util::downloadFile(Logger* logger, const std::string& url, const std::string& path)
 {
+#ifndef _WIN32
+  /* the WinHTTP implementation below has no native equivalent yet; downloads
+     are only used to fetch RA_Integration.dll, which Linux does not load */
+  (void)url; (void)path;
+  logger->warn("[UTL] downloadFile is not implemented on this platform");
+  return false;
+#else
   bool bSuccess = false;
   HINTERNET hSession = nullptr, hConnect = nullptr, hRequest = nullptr;
 
@@ -467,6 +474,7 @@ bool util::downloadFile(Logger* logger, const std::string& url, const std::strin
   }
 
   return bSuccess;
+#endif /* _WIN32 */
 }
 #endif
 
@@ -662,6 +670,30 @@ void util::ensureDirectoryExists(const std::string& directory)
     /* warning: this requires a full path */
     std::wstring unicodeDirectory = util::utf8ToUChar(directory);
     SHCreateDirectoryExW(NULL, unicodeDirectory.c_str(), NULL);
+  }
+}
+
+#else
+
+void util::ensureDirectoryExists(const std::string& directory)
+{
+  if (util::exists(directory))
+    return;
+
+  /* create each component in turn, like SHCreateDirectoryEx does */
+  std::string sPath;
+  size_t nStart = 0;
+  while (nStart < directory.length())
+  {
+    size_t nNext = directory.find('/', nStart + 1);
+    if (nNext == std::string::npos)
+      nNext = directory.length();
+
+    sPath = directory.substr(0, nNext);
+    if (!sPath.empty() && !util::exists(sPath))
+      ::mkdir(sPath.c_str(), 0755);
+
+    nStart = nNext;
   }
 }
 

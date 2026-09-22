@@ -32,10 +32,18 @@ along with RALibRetro.  If not, see <http://www.gnu.org/licenses/>.
 #include <miniz/miniz.h>
 
 #define WIN32_LEAN_AND_MEAN
+#ifdef _WIN32
 #include <windows.h>
+#endif
+#ifdef _WIN32
 #include <winuser.h>
+#endif
+#ifdef _WIN32
 #include <commdlg.h>
+#endif
+#ifdef _WIN32
 #include <shlobj.h>
+#endif
 
 #include <assert.h>
 #include <time.h>

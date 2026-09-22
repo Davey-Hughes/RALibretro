@@ -34,6 +34,19 @@ along with RALibretro.  If not, see <http://www.gnu.org/licenses/>.
 #include <ctime>
 #include <map>
 
+#ifndef RA_DIR_SEP
+ #ifdef _WIN32
+  #define RA_DIR_SEP "\\"
+  #define RA_DIR_SEP_CHAR '\\'
+  #define RA_CORE_EXT ".dll"
+ #else
+  #define RA_DIR_SEP "/"
+  #define RA_DIR_SEP_CHAR '/'
+  #define RA_CORE_EXT ".so"
+ #endif
+#endif
+
+
 #define TAG "[EMU] "
 
 #if defined(_M_X64) || defined(__amd64__)
@@ -98,7 +111,7 @@ const char* getEmulatorExtensions(const std::string& coreName, int system)
 bool loadCores(Config* config, Logger* logger)
 {
   std::string path = config->getRootFolder();
-  path += "Cores\\cores.json";
+  path += "Cores" RA_DIR_SEP "cores.json";
 
   logger->debug(TAG "Identifying available cores");
 
@@ -140,7 +153,7 @@ bool loadCores(Config* config, Logger* logger)
         if (!ud->inCore)
         {
           std::string path = ud->config->getRootFolder();
-          path += "Cores\\" + ud->key + ".dll";
+          path += "Cores" RA_DIR_SEP + ud->key + RA_CORE_EXT;
 
           s_coreInfos.emplace_back();
           ud->core = &s_coreInfos.back();
@@ -519,7 +532,7 @@ protected:
   void deleteCore(HWND hwnd, const std::string& coreName)
   {
     std::string path = config->getRootFolder();
-    path += "Cores\\" + coreName + ".dll";
+    path += "Cores" RA_DIR_SEP + coreName + RA_CORE_EXT;
     util::deleteFile(path);
 
     for (auto& core : s_coreInfos)
@@ -537,13 +550,13 @@ protected:
 
   void updateCore(HWND hwnd, const std::string& coreName)
   {
-    std::string coreFile = coreName + ".dll";
+    std::string coreFile = coreName + RA_CORE_EXT;
     std::string path = config->getRootFolder();
-    path += "Cores\\" + coreFile;
+    path += "Cores" RA_DIR_SEP + coreFile;
     std::string zipPath = path + ".zip";
 
     std::string url = BUILDBOT_URL;
-    url += coreName + ".dll.zip";
+    url += coreName + RA_CORE_EXT ".zip";
     if (!util::downloadFile(logger, url, zipPath))
     {
       MessageBox(hwnd, "Download failed.", "Error", MB_OK);
@@ -647,7 +660,7 @@ static const char* s_getCoreName(int index, void* udata)
 static void getCoreSystemTimes(Config* config, Logger* logger)
 {
   std::string path = config->getRootFolder();
-  path += "Cores\\index.txt";
+  path += "Cores" RA_DIR_SEP "index.txt";
   const time_t now = time(NULL);
   const time_t lastCheck = util::fileTime(path);
   if (now - lastCheck > 60 * 60 * 24) // 24 hours

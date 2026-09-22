@@ -30,8 +30,12 @@ along with RALibretro.  If not, see <http://www.gnu.org/licenses/>.
 #include <string.h>
 
 #define WIN32_LEAN_AND_MEAN
+#ifdef _WIN32
 #include <windows.h>
+#endif
+#ifdef _WIN32
 #include <winuser.h>
+#endif
 
 #ifdef HAVE_CHD
 void rc_hash_init_chd_cdreader(); /* in HashCHD.cpp */
