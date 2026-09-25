@@ -46,7 +46,8 @@ set(SOURCES_C
 set(SOURCES_CXX
   src/libretro/BareCore.cpp
   src/libretro/Core.cpp
-  compat/RA_Interface_linux.cpp
+  src/RAInterface/RA_Interface_posix.cpp
+  src/RA_Implementation.cpp
   src/components/Audio.cpp
   src/components/Config.cpp
   compat/Dialog_stub.cpp

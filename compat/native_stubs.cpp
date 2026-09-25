@@ -35,9 +35,3 @@ void Config::showEmulatorSettingsDialog()
   SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "Not implemented",
                            "The emulator settings dialog is not available in the native build yet.", nullptr);
 }
-
-/* RA_Implementation.cpp (excluded from the native build: it is Win32 menu code)
- * defines this one-argument helper, which Application::init calls. */
-void RA_Init(HWND)
-{
-}
