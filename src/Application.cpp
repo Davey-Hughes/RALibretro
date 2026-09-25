@@ -324,6 +324,16 @@ bool Application::init(const char* title, int width, int height)
   }
   _video.setRotationChangedHandler(s_onRotationChanged);
 
+  {
+    // SDL reports a window's size through SDL_WINDOWEVENT_SIZE_CHANGED only
+    // when it changes, and on Linux none arrives for the size the window was
+    // created with. Without this the video component never learns the size
+    // and lays out every frame against a 0x0 window.
+    int windowWidth, windowHeight;
+    SDL_GetWindowSize(_window, &windowWidth, &windowHeight);
+    _video.windowResized(windowWidth, windowHeight);
+  }
+
   inited = kVideoInited;
 
   {
@@ -2588,7 +2598,9 @@ void Application::handle(const SDL_WindowEvent* window)
 void Application::handle(const SDL_MouseMotionEvent* motion)
 {
   const int viewWidth = _video.getViewWidth();
-  if (viewWidth)
+  // the scaled size is the divisor below, and it is 0 until the video
+  // component knows the window's size
+  if (viewWidth && _video.getViewScaledWidth() && _video.getViewScaledHeight())
   {
     int rel_x, rel_y, abs_x, abs_y;
 
