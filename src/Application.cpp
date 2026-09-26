@@ -80,6 +80,10 @@ along with RALibretro.  If not, see <http://www.gnu.org/licenses/>.
 
 //#define DEBUG_AUDIO 1
 
+#ifndef _WIN32
+bool RA_HandleHostWorkEvent(const SDL_Event* pEvent);
+#endif
+
 HWND g_mainWindow;
 Application app;
 
@@ -403,6 +407,11 @@ void Application::processEvents()
 
   do
   {
+#ifndef _WIN32
+    if (RA_HandleHostWorkEvent(&event))
+      continue;
+#endif
+
     switch (event.type)
     {
       case SDL_QUIT:
