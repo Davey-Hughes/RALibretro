@@ -121,7 +121,7 @@ protected:
   void        handle(const SDL_MouseMotionEvent* motion);
   void        handle(const SDL_MouseButtonEvent* button);
   void        handle(const KeyBinds::Action action, unsigned extra);
-  void        openRichPresenceMonitor();
+  void        openRADialog(const wchar_t* label);
   void        buildSystemsMenu();
   void        loadConfiguration(int* window_x, int* window_y, int* window_width, int* window_height);
   void        saveConfiguration();

@@ -2808,7 +2808,11 @@ void Application::handle(const KeyBinds::Action action, unsigned extra)
     break;
 
   case KeyBinds::Action::kRichPresenceMonitor:
-    openRichPresenceMonitor();
+    openRADialog(L"Rich Presence Monitor");
+    break;
+
+  case KeyBinds::Action::kOverlaySettings:
+    openRADialog(L"Overlay Settings");
     break;
   }
 }
@@ -2819,9 +2823,9 @@ void Application::updateMouseCapture()
 }
 
 // A stopgap until native builds have a RetroAchievements menu. RA_Interface.h
-// keeps the menu IDs private, so the item is found by its label, through the
-// same API a native menu would be built from.
-void Application::openRichPresenceMonitor()
+// keeps the menu IDs private, so an item is found by its label (accelerator
+// markers removed), through the same API a native menu would be built from.
+void Application::openRADialog(const wchar_t* label)
 {
   RA_MenuItem items[64];
   const int count = RA_GetPopupMenuItems(items);
@@ -2831,21 +2835,24 @@ void Application::openRichPresenceMonitor()
     if (items[i].sLabel == NULL) // a separator
       continue;
 
-    std::wstring label;
+    std::wstring itemLabel;
     for (const wchar_t* c = items[i].sLabel; *c; c++)
     {
       if (*c != L'&') // the accelerator marker
-        label.push_back(*c);
+        itemLabel.push_back(*c);
     }
 
-    if (label == L"Rich Presence Monitor")
+    if (itemLabel == label)
     {
       RA_InvokeDialog(items[i].nID);
       return;
     }
   }
 
-  _logger.warn(TAG "Rich Presence Monitor not found in the RetroAchievements menu");
+  std::string narrow;
+  for (const wchar_t* c = label; *c; c++)
+    narrow.push_back(static_cast<char>(*c)); // the labels are ASCII
+  _logger.warn(TAG "%s not found in the RetroAchievements menu", narrow.c_str());
 }
 
 void Application::toggleFastForwarding(unsigned extra)
