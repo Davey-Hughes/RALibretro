@@ -2806,12 +2806,46 @@ void Application::handle(const KeyBinds::Action action, unsigned extra)
     _video.showMessage(_keybinds.hasGameFocus() ? "Game focus enabled" : "Game focus disabled", 60);
     updateMouseCapture();
     break;
+
+  case KeyBinds::Action::kRichPresenceMonitor:
+    openRichPresenceMonitor();
+    break;
   }
 }
 
 void Application::updateMouseCapture()
 {
   SDL_SetRelativeMouseMode(_keybinds.hasGameFocus() && _config.getGameFocusCaptureMouse() ? SDL_TRUE : SDL_FALSE);
+}
+
+// A stopgap until native builds have a RetroAchievements menu. RA_Interface.h
+// keeps the menu IDs private, so the item is found by its label, through the
+// same API a native menu would be built from.
+void Application::openRichPresenceMonitor()
+{
+  RA_MenuItem items[64];
+  const int count = RA_GetPopupMenuItems(items);
+
+  for (int i = 0; i < count; i++)
+  {
+    if (items[i].sLabel == NULL) // a separator
+      continue;
+
+    std::wstring label;
+    for (const wchar_t* c = items[i].sLabel; *c; c++)
+    {
+      if (*c != L'&') // the accelerator marker
+        label.push_back(*c);
+    }
+
+    if (label == L"Rich Presence Monitor")
+    {
+      RA_InvokeDialog(items[i].nID);
+      return;
+    }
+  }
+
+  _logger.warn(TAG "Rich Presence Monitor not found in the RetroAchievements menu");
 }
 
 void Application::toggleFastForwarding(unsigned extra)

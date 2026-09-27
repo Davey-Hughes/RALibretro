@@ -94,6 +94,7 @@ public:
 
     // Keyboard
     kGameFocusToggle,
+    kRichPresenceMonitor, // a stopgap until native builds have a RetroAchievements menu
     kKeyboardInput  // (extra = key << 8 | pressed)
   };
 
@@ -127,7 +128,7 @@ public:
     uint16_t modifiers;
   };
 
-  typedef std::array<Binding, 151> BindingList;
+  typedef std::array<Binding, 152> BindingList;
 
   static void getBindingString(char buffer[32], const KeyBinds::Binding& desc);
 
