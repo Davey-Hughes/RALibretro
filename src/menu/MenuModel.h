@@ -9,7 +9,7 @@ namespace menu
   // One entry of a menu. A separator uses no other field.
   struct MenuItem
   {
-    std::string label;              // UTF-8, accelerator markers removed
+    std::string label;              // UTF-8; Win32's '&' accelerator markers kept (Qt reads them the same way; "&&" is a literal '&')
     int id = 0;
     bool checked = false;
     bool enabled = true;
