@@ -32,25 +32,14 @@ namespace
   }
 }
 
-std::string menu::displayLabel(const wchar_t* label)
+std::string menu::toUtf8(const wchar_t* label)
 {
   // wchar_t is UTF-32 off Windows, the only place this is built
   static_assert(sizeof(wchar_t) == 4, "labels are read as UTF-32");
 
   std::string out;
   for (const wchar_t* c = label; *c; ++c)
-  {
-    if (*c == L'&')
-    {
-      // "&x" marks x as the accelerator, "&&" is a literal '&', and a
-      // trailing '&' marks nothing
-      ++c;
-      if (*c == L'\0')
-        break;
-    }
-
     appendUtf8(out, static_cast<char32_t>(*c));
-  }
 
   return out;
 }
@@ -104,7 +93,7 @@ void menu::RAMenuSource::reload()
     }
     else
     {
-      item.label = displayLabel(items[i].sLabel);
+      item.label = toUtf8(items[i].sLabel);
       item.id = static_cast<int>(items[i].nID);
       item.checked = items[i].bChecked != 0;
     }

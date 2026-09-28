@@ -8,9 +8,10 @@
 
 namespace menu
 {
-  // A label as RA_GetPopupMenuItems gives it, for display: UTF-8, with the
-  // Win32 accelerator markers removed ("&Login" -> "Login", "&&" -> "&").
-  std::string displayLabel(const wchar_t* label);
+  // A label as RA_GetPopupMenuItems gives it, converted to UTF-8 for a Qt
+  // menu. Win32's accelerator markers stay: Qt reads "&Login" and "&&" the
+  // same way a Win32 menu does.
+  std::string toUtf8(const wchar_t* label);
 
   // The RetroAchievements menu, built from RA_GetPopupMenuItems (the header's
   // contract for hosts without a Win32 menu) and run through RA_InvokeDialog.

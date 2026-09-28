@@ -82,23 +82,16 @@ TEST(RAMenuSource_TitleIsRetroAchievements)
   CHECK_EQ(std::string("RetroAchievements"), source.current().title);
 }
 
-TEST(RAMenuSource_DisplayLabelRemovesAcceleratorMarkers)
+TEST(RAMenuSource_ToUtf8)
 {
-  CHECK_EQ(std::string("Login"), menu::displayLabel(L"&Login"));
-  CHECK_EQ(std::string("Logout"), menu::displayLabel(L"Log&out"));
-  CHECK_EQ(std::string("Save & Quit"), menu::displayLabel(L"Save && Quit"));
-  CHECK_EQ(std::string("Trailing"), menu::displayLabel(L"Trailing&"));
-  CHECK_EQ(std::string(""), menu::displayLabel(L""));
-}
-
-TEST(RAMenuSource_DisplayLabelIsUtf8)
-{
-  CHECK_EQ(std::string("Pok\xC3\xA9mon"), menu::displayLabel(L"Pokémon"));
-  CHECK_EQ(std::string("\xE2\x98\x85"), menu::displayLabel(L"★"));
-  CHECK_EQ(std::string("\xF0\x9F\x8C\x8F"), menu::displayLabel(L"\U0001F30F"));
-
+  CHECK_EQ(std::string("&Login"), menu::toUtf8(L"&Login"));
+  CHECK_EQ(std::string("Save && Quit"), menu::toUtf8(L"Save && Quit"));
+  CHECK_EQ(std::string("Pok\xC3\xA9mon"), menu::toUtf8(L"Pokémon"));
+  CHECK_EQ(std::string("\xE2\x98\x85"), menu::toUtf8(L"★"));
+  CHECK_EQ(std::string("\xF0\x9F\x8C\x8F"), menu::toUtf8(L"\U0001F30F"));
   const wchar_t surrogate[] = {static_cast<wchar_t>(0xD800), 0}; // not a code point
-  CHECK_EQ(std::string("\xEF\xBF\xBD"), menu::displayLabel(surrogate));
+  CHECK_EQ(std::string("\xEF\xBF\xBD"), menu::toUtf8(surrogate));
+  CHECK_EQ(std::string(""), menu::toUtf8(L""));
 }
 
 TEST(RAMenuSource_CopiesRAsItems)
@@ -112,7 +105,7 @@ TEST(RAMenuSource_CopiesRAsItems)
   if (items.size() != 3)
     return;
 
-  CHECK_EQ(std::string("Login"), items[0].label);
+  CHECK_EQ(std::string("&Login"), items[0].label);
   CHECK_EQ(1701, items[0].id);
   CHECK(!items[0].checked);
   CHECK(items[0].enabled);
@@ -120,7 +113,7 @@ TEST(RAMenuSource_CopiesRAsItems)
 
   CHECK(items[1].separator);
 
-  CHECK_EQ(std::string("Hardcore Mode"), items[2].label);
+  CHECK_EQ(std::string("&Hardcore Mode"), items[2].label);
   CHECK_EQ(1710, items[2].id);
   CHECK(items[2].checked);
 }
@@ -138,7 +131,7 @@ TEST(RAMenuSource_LabelsOutliveRAsStorage)
   const auto& items = source.current().items; // not dirty: no re-read
   CHECK_EQ(size_t(1), items.size());
   if (items.size() == 1)
-    CHECK_EQ(std::string("Rich Presence Monitor"), items[0].label);
+    CHECK_EQ(std::string("Rich &Presence Monitor"), items[0].label);
 }
 
 TEST(RAMenuSource_ReadsRAOnlyWhenDirty)
