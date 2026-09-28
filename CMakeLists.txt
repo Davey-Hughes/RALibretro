@@ -107,3 +107,22 @@ target_compile_options(RALibretro PRIVATE
 )
 target_include_directories(RALibretro PRIVATE ${SDL2_INCLUDE_DIRS})
 target_link_libraries(RALibretro PRIVATE ${SDL2_LIBRARIES} OpenGL::GL dl pthread)
+
+# --- native menu -------------------------------------------------------------
+# The menu's logic (no ImGui, no GL, no RA library) has unit tests of its own:
+# RALibretro has no test framework. New menu code is held to -Wall -Wextra, and
+# the tests also run under ASan and UBSan.
+set(MENU_WARNINGS -Wall -Wextra)
+
+add_executable(ralibretro_menu_tests
+  tests/menu/main.cpp
+  tests/menu/RAMenuSource_tests.cpp
+  src/menu/RAMenuSource.cpp
+)
+target_include_directories(ralibretro_menu_tests PRIVATE src src/RAInterface ${SDL2_INCLUDE_DIRS})
+target_compile_options(ralibretro_menu_tests PRIVATE
+  ${MENU_WARNINGS} -fsanitize=address,undefined -fno-omit-frame-pointer)
+target_link_options(ralibretro_menu_tests PRIVATE -fsanitize=address,undefined)
+
+enable_testing()
+add_test(NAME menu COMMAND ralibretro_menu_tests)
