@@ -3,13 +3,20 @@
 #include "host/HostServices.h"
 #include "host/IHostEvents.h"
 #include "host/qt/QtHost.h"
+// Components.h:85, the NDEBUG debug() stub, leaves its 'fmt' parameter unused
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-parameter"
 #include "libretro/Components.h"
+#pragma clang diagnostic pop
 #include "menu/IMenuSource.h"
 
 #include <QAction>
+#include <QApplication>
+#include <QKeyEvent>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMainWindow>
+#include <QToolButton>
 #include <QWidget>
 #include <QWindow>
 #include <QtTest/QTest>
@@ -75,6 +82,20 @@ namespace
     out.enabled = enabled;
     return out;
   }
+
+  // Records every object a key press is addressed to. Installed after the
+  // host's router, so it runs first and sees each delivery, consumed or not.
+  struct KeySpy : QObject
+  {
+    std::vector<std::pair<QObject*, int>> presses;
+
+    bool eventFilter(QObject* receiver, QEvent* event) override
+    {
+      if (event->type() == QEvent::KeyPress)
+        presses.emplace_back(receiver, static_cast<QKeyEvent*>(event)->key());
+      return false;
+    }
+  };
 }
 
 TEST(QtHost_CreateShowsAnExposedRenderWindow)
@@ -199,6 +220,68 @@ TEST(QtHost_MenuBarBuildsFromSourcesAndDispatches)
   CHECK_EQ(1, events.abouts);
 }
 
+TEST(QtHost_RebuildingAMenuLeaksNoSubmenus)
+{
+  TestLogger logger;
+  Events events;
+  host::QtHost host(&logger, events);
+  CHECK(host.create("test", 64, 64));
+
+  FakeSource file;
+  file.menu.title = "File";
+  menu::MenuItem recent;
+  recent.label = "Load Recent";
+  recent.children = {item("game.nes", 42)};
+  file.menu.items = {recent};
+  FakeSource ra;
+  ra.menu.title = "RetroAchievements";
+  ra.menu.items = {item("Login", 1701)};
+  const std::vector<menu::IMenuSource*> sources = {&file, &ra};
+  host.buildMenuBar(sources, 1);
+
+  auto* mainWindow = qobject_cast<QMainWindow*>(host.renderWidget()->window());
+  CHECK(mainWindow != nullptr);
+  if (mainWindow == nullptr)
+    return;
+  QMenuBar* bar = mainWindow->menuBar();
+  QMenu* fileMenu = bar->actions().isEmpty() ? nullptr : bar->actions()[0]->menu();
+  CHECK(fileMenu != nullptr);
+  if (fileMenu == nullptr)
+    return;
+
+  // every open rebuilds File, submenu and all: the old submenu must go
+  emit fileMenu->aboutToShow();
+  const qsizetype afterFirstOpen = mainWindow->findChildren<QMenu*>().size();
+  for (int open = 2; open <= 5; ++open)
+    emit fileMenu->aboutToShow();
+  CHECK_EQ(afterFirstOpen, mainWindow->findChildren<QMenu*>().size());
+
+  // the submenu built by the last open still dispatches
+  QMenu* recentMenu = fileMenu->actions().isEmpty() ? nullptr : fileMenu->actions()[0]->menu();
+  CHECK(recentMenu != nullptr);
+  if (recentMenu != nullptr && !recentMenu->actions().isEmpty())
+  {
+    recentMenu->actions()[0]->trigger();
+    CHECK_EQ(size_t(1), events.commands.size());
+    if (!events.commands.empty())
+      CHECK_EQ(42, events.commands[0].second);
+  }
+
+  // Rebuilding the bar replaces its menus. The bar also owns a QMenu of its
+  // own, the overflow menu behind its extension button, which is not counted.
+  const auto barMenus = [bar]() {
+    QList<QMenu*> menus = bar->findChildren<QMenu*>(QString(), Qt::FindDirectChildrenOnly);
+    for (QToolButton* button : bar->findChildren<QToolButton*>())
+      menus.removeAll(button->menu());
+    return static_cast<size_t>(menus.size());
+  };
+  CHECK_EQ(sources.size(), barMenus());
+  host.buildMenuBar(sources, 1);
+  CHECK_EQ(sources.size(), barMenus());
+  host.buildMenuBar(sources, 1);
+  CHECK_EQ(sources.size(), barMenus());
+}
+
 TEST(QtHost_KeysArriveAsSdlKeycodesByEveryRoute)
 {
   TestLogger logger;
@@ -233,6 +316,28 @@ TEST(QtHost_KeysArriveAsSdlKeycodesByEveryRoute)
 
   QTest::keyClick(host.glSurface(), Qt::Key_Launch0); // no SDL code: not forwarded
   CHECK_EQ(size_t(8), events.keys.size());
+
+  // A bare modifier on the toplevel is forwarded but not consumed, so Qt still
+  // hands it on to the focus widget (QMenuBar must see Alt). It reaches the
+  // container that way, which must not forward it a second time.
+  KeySpy spy;
+  QApplication::instance()->installEventFilter(&spy);
+  QTest::keyClick(host.renderWidget()->window()->windowHandle(), Qt::Key_Alt);
+  QApplication::instance()->removeEventFilter(&spy);
+  CHECK_EQ(size_t(10), events.keys.size());
+  if (events.keys.size() == 10)
+  {
+    // the key and its state; the mod is whatever QTest's synthetic Alt carries
+    const std::string alt = std::to_string(SDLK_LALT) + ":";
+    CHECK_EQ(alt, events.keys[8].substr(0, alt.size()));
+    CHECK_EQ(std::string(":1:0"), events.keys[8].substr(events.keys[8].size() - 4));
+    CHECK_EQ(alt, events.keys[9].substr(0, alt.size()));
+    CHECK_EQ(std::string(":0:0"), events.keys[9].substr(events.keys[9].size() - 4));
+  }
+  bool passedToTheContainer = false;
+  for (const auto& press : spy.presses)
+    passedToTheContainer = passedToTheContainer || (press.first == host.renderWidget() && press.second == Qt::Key_Alt);
+  CHECK(passedToTheContainer);
 }
 
 TEST(QtHost_MouseArrivesInDevicePixels)

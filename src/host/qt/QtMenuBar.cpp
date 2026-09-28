@@ -3,10 +3,25 @@
 #include <QAction>
 #include <QMenu>
 
+namespace
+{
+  // Deletes the menus hanging off a bar's or a menu's actions: the QMenus
+  // addMenu(title) made. They are the widget's children, and clear() leaves
+  // them alive (it deletes only the actions the widget itself parents). Only
+  // those: a QMenuBar also owns a QMenu of its own, the overflow menu behind
+  // its extension button, which "every child QMenu" would take too.
+  void deleteSubmenus(QWidget* widget)
+  {
+    for (QAction* action : widget->actions())
+      delete action->menu();
+  }
+}
+
 host::QtMenuBar::QtMenuBar(QMenuBar* bar, IHostEvents& events) : _bar(bar), _events(events) {}
 
 void host::QtMenuBar::build(const std::vector<menu::IMenuSource*>& sources, size_t aboutAfter)
 {
+  deleteSubmenus(_bar);
   _bar->clear();
   _titles.clear();
 
@@ -35,6 +50,7 @@ void host::QtMenuBar::addSource(menu::IMenuSource& source, size_t index)
   _titles += _titles.empty() ? title : ", " + title;
 
   QObject::connect(qmenu, &QMenu::aboutToShow, qmenu, [this, qmenu, &source, index]() {
+    deleteSubmenus(qmenu);
     qmenu->clear();
     fill(qmenu, source.current().items, index);
   });

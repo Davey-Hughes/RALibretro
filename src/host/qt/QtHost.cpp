@@ -5,7 +5,11 @@
 #include "host/qt/GlWindow.h"
 #include "host/qt/QtKeyMap.h"
 #include "host/qt/QtMenuBar.h"
+// Components.h:85, the NDEBUG debug() stub, leaves its 'fmt' parameter unused
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-parameter"
 #include "libretro/Components.h"
+#pragma clang diagnostic pop
 
 #include <QApplication>
 #include <QCloseEvent>
@@ -52,11 +56,18 @@ namespace
   };
 
   // Routes key events to IHostEvents wherever Qt delivers them: to the GL window
-  // (when the container handed it focus), to the container widget, or to the
-  // main window's own QWindow (the toplevel, which forwards to the focus widget
-  // only after this filter has seen it). Consuming here means one delivery per
-  // key, never two. A key meant for something else - an open menu, a dialog -
-  // is addressed to that object and passes untouched.
+  // (when the container handed it focus), to the main window's own QWindow (the
+  // toplevel, which passes what this filter leaves on to the focus widget), or
+  // to the container widget. Each key must reach IHostEvents once, and Alt must
+  // still reach the widget tree so QMenuBar can react to it. So:
+  // - on the GL window or the toplevel, a key is forwarded. A non-modifier is
+  //   consumed there; a bare modifier (Shift, Ctrl, Alt, Meta, ...) is not, so
+  //   Qt goes on delivering it.
+  // - on the container, a non-modifier is forwarded and consumed. A modifier is
+  //   left alone: it can only have come down from the toplevel, which has
+  //   forwarded it already.
+  // A key meant for something else - an open menu, a dialog - is addressed to
+  // that object and passes untouched.
   class KeyRouter : public QObject
   {
   public:
@@ -71,21 +82,45 @@ namespace
       const QEvent::Type type = event->type();
       if (type != QEvent::KeyPress && type != QEvent::KeyRelease)
         return false;
-      if (receiver != _glWindow && receiver != _container && receiver != _mainWindowHandle)
+      const bool onContainer = receiver == _container;
+      if (receiver != _glWindow && receiver != _mainWindowHandle && !onContainer)
         return false;
       if (QApplication::activePopupWidget() != nullptr)
         return false; // an open menu owns the keyboard
 
       auto* keyEvent = static_cast<QKeyEvent*>(event);
+      const bool modifier = isModifier(keyEvent->key());
+      if (onContainer && modifier)
+        return false; // passed down by the toplevel, which forwarded it
+
       const host::SdlKey key = host::toSdl(static_cast<Qt::Key>(keyEvent->key()), keyEvent->modifiers());
       if (key.sym == SDLK_UNKNOWN)
         return false;
 
       _events.onKey(key.sym, key.mod, type == QEvent::KeyPress, keyEvent->isAutoRepeat());
-      return true;
+      return !modifier;
     }
 
   private:
+    static bool isModifier(int key)
+    {
+      switch (key)
+      {
+        case Qt::Key_Shift:
+        case Qt::Key_Control:
+        case Qt::Key_Alt:
+        case Qt::Key_AltGr:
+        case Qt::Key_Meta:
+        case Qt::Key_Super_L:
+        case Qt::Key_Super_R:
+        case Qt::Key_Hyper_L:
+        case Qt::Key_Hyper_R:
+          return true;
+        default:
+          return false;
+      }
+    }
+
     host::IHostEvents& _events;
     QObject* _glWindow;
     QObject* _container;

@@ -4,7 +4,11 @@
 // RA context RALibretro presents with, and the core context a libretro core
 // renders in. The same pair VideoContext.cpp makes with SDL on Windows.
 
+// Components.h:85, the NDEBUG debug() stub, leaves its 'fmt' parameter unused
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-parameter"
 #include "libretro/Components.h"
+#pragma clang diagnostic pop
 
 class QOpenGLContext;
 class QWindow;
