@@ -20,6 +20,7 @@ namespace menutests
   std::vector<Test>& registry();
   bool add(const char* name, TestFunc func);
   void fail(const char* file, int line, const std::string& message);
+  int run(const char* filter);
 
   template <typename T>
   std::string describe(const T& value)

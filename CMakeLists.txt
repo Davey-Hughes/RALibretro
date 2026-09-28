@@ -21,6 +21,7 @@ endif()
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SDL2 REQUIRED sdl2)
 find_package(OpenGL REQUIRED)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets OpenGL Test)
 
 set(SOURCES_C
   src/dynlib/dynlib.c
@@ -73,6 +74,32 @@ set(SOURCES_CXX
   src/Util.cpp
 )
 
+# --- the Qt host ---------------------------------------------------------------
+# Linux only. Its own target so native_compat.h's force-include never reaches a
+# Qt header, and so Application.cpp never sees one: the two Qt-free headers
+# under src/host are the whole boundary.
+add_library(ralibretro_qthost STATIC
+  src/host/qt/QtHost.cpp
+  src/host/qt/GlWindow.cpp
+  src/host/qt/QtVideoContext.cpp
+  src/host/qt/QtMenuBar.cpp
+  src/host/qt/QtKeyMap.cpp
+)
+target_include_directories(ralibretro_qthost PUBLIC src src/libretro src/RAInterface)
+target_include_directories(ralibretro_qthost SYSTEM PUBLIC ${SDL2_INCLUDE_DIRS})
+target_link_libraries(ralibretro_qthost PUBLIC Qt6::Widgets Qt6::OpenGL)
+target_compile_options(ralibretro_qthost PRIVATE -Wall -Wextra)
+
+add_executable(ralibretro_qthost_tests
+  tests/qthost/main.cpp
+  tests/qthost/QtHost_tests.cpp
+  tests/menu/Runner.cpp
+)
+target_include_directories(ralibretro_qthost_tests PRIVATE tests/menu)
+target_link_libraries(ralibretro_qthost_tests PRIVATE ralibretro_qthost Qt6::Test ${SDL2_LIBRARIES})
+target_compile_options(ralibretro_qthost_tests PRIVATE -Wall -Wextra)
+add_test(NAME qthost COMMAND ralibretro_qthost_tests)
+
 add_executable(RALibretro ${SOURCES_C} ${SOURCES_CXX})
 
 target_include_directories(RALibretro PRIVATE
@@ -114,10 +141,9 @@ target_link_libraries(RALibretro PRIVATE ${SDL2_LIBRARIES} OpenGL::GL dl pthread
 # the tests also run under ASan and UBSan.
 set(MENU_WARNINGS -Wall -Wextra)
 
-find_package(Qt6 REQUIRED COMPONENTS Core)
-
 add_executable(ralibretro_menu_tests
   tests/menu/main.cpp
+  tests/menu/Runner.cpp
   tests/menu/RAMenuSource_tests.cpp
   tests/menu/QtKeyMap_tests.cpp
   src/menu/RAMenuSource.cpp
