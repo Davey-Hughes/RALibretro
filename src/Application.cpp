@@ -39,6 +39,7 @@ along with RALibretro.  If not, see <http://www.gnu.org/licenses/>.
 #include "GlUtil.h"
 
 #include "resource.h"
+#include "MenuItems.h"
 
 #include <assert.h>
 #include <chrono>
@@ -976,61 +977,12 @@ bool Application::validateHardcoreEnablement()
 
 void Application::updateMenu()
 {
-  static const UINT all_items[] =
-  {
-    IDM_LOAD_GAME,
-    IDM_PAUSE_GAME, IDM_RESUME_GAME, IDM_RESET_GAME,
-    IDM_EXIT,
+  enableItems(menuitems::all_items, sizeof(menuitems::all_items) / sizeof(menuitems::all_items[0]), MF_DISABLED);
 
-    IDM_CORE_CONFIG, IDM_TURBO_GAME, IDM_ABOUT
-  };
-
-  static const UINT start_items[] =
-  {
-    IDM_EXIT, IDM_ABOUT
-  };
-
-  static const UINT core_loaded_items[] =
-  {
-    IDM_LOAD_GAME, IDM_EXIT, IDM_CORE_CONFIG, IDM_ABOUT
-  };
-
-  static const UINT game_running_items[] =
-  {
-    IDM_LOAD_GAME, IDM_PAUSE_GAME, IDM_RESET_GAME,
-    IDM_EXIT,
-
-    IDM_CORE_CONFIG, IDM_TURBO_GAME, IDM_ABOUT
-  };
-
-  static const UINT game_paused_items[] =
-  {
-    IDM_LOAD_GAME, IDM_RESUME_GAME, IDM_RESET_GAME,
-    IDM_EXIT,
-
-    IDM_CORE_CONFIG, IDM_TURBO_GAME, IDM_ABOUT
-  };
-
-  enableItems(all_items, sizeof(all_items) / sizeof(all_items[0]), MF_DISABLED);
-
-  switch (_fsm.currentState())
-  {
-  case Fsm::State::Start:
-    enableItems(start_items, sizeof(start_items) / sizeof(start_items[0]), MF_ENABLED);
-    break;
-  case Fsm::State::CoreLoaded:
-    enableItems(core_loaded_items, sizeof(core_loaded_items) / sizeof(core_loaded_items[0]), MF_ENABLED);
-    break;
-  case Fsm::State::GameRunning:
-    enableItems(game_running_items, sizeof(game_running_items) / sizeof(game_running_items[0]), MF_ENABLED);
-    break;
-  case Fsm::State::GamePaused:
-  case Fsm::State::GamePausedNoOvl:
-    enableItems(game_paused_items, sizeof(game_paused_items) / sizeof(game_paused_items[0]), MF_ENABLED);
-    break;
-  default:
-    break;
-  }
+  size_t count = 0;
+  const unsigned* items = menuitems::enabledForState(_fsm.currentState(), &count);
+  if (items != nullptr)
+    enableItems(items, count, MF_ENABLED);
 
   enableSlots();
   enableRecent();

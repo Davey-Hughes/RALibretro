@@ -122,8 +122,10 @@ add_executable(ralibretro_menu_tests
   tests/menu/QtKeyMap_tests.cpp
   src/menu/RAMenuSource.cpp
   src/host/qt/QtKeyMap.cpp
+  tests/menu/HostMenu_tests.cpp
+  src/menu/HostMenu.cpp
 )
-target_include_directories(ralibretro_menu_tests PRIVATE src src/RAInterface ${SDL2_INCLUDE_DIRS})
+target_include_directories(ralibretro_menu_tests PRIVATE src src/RAInterface src/rcheevos/include ${SDL2_INCLUDE_DIRS})
 target_link_libraries(ralibretro_menu_tests PRIVATE Qt6::Core ${SDL2_LIBRARIES})
 target_compile_options(ralibretro_menu_tests PRIVATE
   ${MENU_WARNINGS} -fsanitize=address,undefined -fno-omit-frame-pointer)
