@@ -56,11 +56,13 @@ bool host::QtVideoContext::init(libretro::LoggerComponent* logger, QtHost& host)
   _logger->info(TAG "OpenGL %d.%d %s profile, contexts share: %d", format.majorVersion(), format.minorVersion(),
                 format.profile() == QSurfaceFormat::CoreProfile ? "core" : "compatibility",
                 QOpenGLContext::areSharing(_raContext, _coreContext) ? 1 : 0);
+  _ready = true;
   return true;
 }
 
 void host::QtVideoContext::destroy()
 {
+  _ready = false;
   if (_raContext != nullptr)
     _raContext->doneCurrent();
   delete _coreContext;
@@ -69,22 +71,60 @@ void host::QtVideoContext::destroy()
   _raContext = nullptr;
 }
 
+bool host::QtVideoContext::ready(const char* caller)
+{
+  if (_ready)
+    return true;
+  if (_logger != nullptr && !_loggedNotReady) // no logger: init was never called
+  {
+    _logger->error(TAG "%s without a successful init: ignored", caller);
+    _loggedNotReady = true;
+  }
+  return false;
+}
+
 void host::QtVideoContext::enableCoreContext(bool enable)
 {
+  if (!ready("enableCoreContext"))
+    return;
+
+  if (enable && _coreContext == nullptr)
+  {
+    if (!_loggedNoCoreContext)
+    {
+      _logger->error(TAG "No core context (re-creating it failed): the RA context stays current");
+      _loggedNoCoreContext = true;
+    }
+    return;
+  }
+
   QOpenGLContext* context = enable ? _coreContext : _raContext;
-  if (context != nullptr && !context->makeCurrent(_surface))
+  if (!context->makeCurrent(_surface))
     _logger->error(TAG "makeCurrent(%s) failed", enable ? "core" : "ra");
 }
 
 void host::QtVideoContext::resetCoreContext()
 {
-  _raContext->makeCurrent(_surface);
+  if (!ready("resetCoreContext"))
+    return;
+
+  if (!_raContext->makeCurrent(_surface))
+    _logger->error(TAG "makeCurrent(ra) failed");
   delete _coreContext;
   _coreContext = createContext(_raContext);
+  if (_coreContext == nullptr)
+  {
+    _logger->error(TAG "Core context not re-created: a core that renders with OpenGL cannot draw");
+    return;
+  }
+  _loggedNoCoreContext = false;
 }
 
 void host::QtVideoContext::swapBuffers()
 {
+  if (!ready("swapBuffers"))
+    return;
+
   // A swap on an unexposed window is undefined in Qt (and on Wayland may wait
   // for a frame callback that never comes). Emulation goes on; only the
   // present is skipped.

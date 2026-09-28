@@ -4,10 +4,10 @@
 #include "host/IHostEvents.h"
 #include "host/qt/QtHost.h"
 // Components.h:85, the NDEBUG debug() stub, leaves its 'fmt' parameter unused
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 #include "libretro/Components.h"
-#pragma clang diagnostic pop
+#pragma GCC diagnostic pop
 #include "menu/IMenuSource.h"
 
 #include <QAction>
@@ -21,8 +21,6 @@
 #include <QWindow>
 #include <QtTest/QTest>
 
-#include <cstdarg>
-#include <cstdio>
 #include <string>
 #include <thread>
 #include <vector>
@@ -68,10 +66,9 @@ namespace
   {
     menu::Menu menu;
     int reads = 0;
-    std::vector<int> activated;
     const menu::Menu& current() override { ++reads; return menu; }
     void markDirty() override {}
-    void activate(int id) override { activated.push_back(id); }
+    void activate(int) override {}
   };
 
   menu::MenuItem item(const char* label, int id, bool enabled = true)
@@ -401,6 +398,90 @@ TEST(QtHost_KeysGoToTheMenuBarWhileItHasFocus)
   CHECK_EQ(beforeEscape, events.keys.size());
 }
 
+TEST(QtHost_AutorepeatKeepsPressAndReleasePaired)
+{
+  TestLogger logger;
+  Events events;
+  host::QtHost host(&logger, events);
+  CHECK(host.create("test", 320, 240));
+  FakeSource file;
+  file.menu.title = "File";
+  file.menu.items = {item("Exit", 40002)};
+  host.buildMenuBar({&file}, 1);
+  QWindow* toplevel = host.renderWidget()->window()->windowHandle();
+
+  // Right goes down in the game, then an Alt tap hands the keyboard to the bar
+  QTest::keyPress(toplevel, Qt::Key_Right);
+  QTest::keyClick(toplevel, Qt::Key_Alt);
+  const QWidget* focus = QApplication::focusWidget();
+  if (focus == nullptr || focus == host.renderWidget())
+  {
+    menutests::fail(__FILE__, __LINE__,
+                    "the menu bar did not take the focus on Alt under the " +
+                        QApplication::platformName().toStdString() + " platform, so this test proves nothing");
+    return;
+  }
+
+  // Right repeats the way Qt delivers it, an autorepeat release and then an
+  // autorepeat press, and then comes up for real
+  qt_handleKeyEvent(toplevel, QEvent::KeyRelease, Qt::Key_Right, Qt::NoModifier, QString(), true);
+  qt_handleKeyEvent(toplevel, QEvent::KeyPress, Qt::Key_Right, Qt::NoModifier, QString(), true);
+  QCoreApplication::processEvents();
+  QTest::keyRelease(toplevel, Qt::Key_Right);
+
+  // the game saw Right down, one repeat, and one release that is not a repeat
+  const std::string right = std::to_string(SDLK_RIGHT) + ":";
+  std::string seen;
+  for (const auto& key : events.keys)
+  {
+    if (key.compare(0, right.size(), right) == 0)
+      seen += key + " ";
+  }
+  CHECK_EQ(right + "0:1:0 " + right + "0:1:1 " + right + "0:0:0 ", seen);
+
+  // and nothing is left held: losing the focus releases nothing
+  const size_t before = events.keys.size();
+  QFocusEvent focusOut(QEvent::FocusOut, Qt::ActiveWindowFocusReason);
+  QCoreApplication::sendEvent(toplevel, &focusOut);
+  CHECK_EQ(before, events.keys.size());
+}
+
+TEST(QtHost_LosingFocusReleasesHeldKeys)
+{
+  TestLogger logger;
+  Events events;
+  host::QtHost host(&logger, events);
+  CHECK(host.create("test", 64, 64));
+  QWindow* toplevel = host.renderWidget()->window()->windowHandle();
+
+  // A goes down, then the window loses the focus: the game gets A's release now
+  QTest::keyPress(toplevel, Qt::Key_A);
+  QFocusEvent focusOut(QEvent::FocusOut, Qt::ActiveWindowFocusReason);
+  QCoreApplication::sendEvent(toplevel, &focusOut);
+  CHECK_EQ(size_t(2), events.keys.size());
+  if (events.keys.size() == 2)
+    CHECK_EQ(std::to_string(SDLK_a) + ":0:0:0", events.keys[1]);
+
+  // Nothing is held any more: a second focus-out releases nothing, and A's
+  // real release, arriving later, is not sent a second time.
+  QFocusEvent secondFocusOut(QEvent::FocusOut, Qt::ActiveWindowFocusReason);
+  QCoreApplication::sendEvent(toplevel, &secondFocusOut);
+  QTest::keyRelease(toplevel, Qt::Key_A);
+  CHECK_EQ(size_t(2), events.keys.size());
+
+  // a menu popping up (opened by mouse) releases what is held too
+  QTest::keyPress(toplevel, Qt::Key_B);
+  QMenu popup;
+  popup.addAction(QStringLiteral("Item"));
+  popup.popup(QPoint(0, 0));
+  CHECK_EQ(size_t(4), events.keys.size());
+  if (events.keys.size() == 4)
+    CHECK_EQ(std::to_string(SDLK_b) + ":0:0:0", events.keys[3]);
+  popup.close();
+  QTest::keyRelease(toplevel, Qt::Key_B);
+  CHECK_EQ(size_t(4), events.keys.size());
+}
+
 TEST(QtHost_MouseArrivesInDevicePixels)
 {
   TestLogger logger;
@@ -408,6 +489,9 @@ TEST(QtHost_MouseArrivesInDevicePixels)
   host::QtHost host(&logger, events);
   CHECK(host.create("test", 200, 100));
   QWindow* gl = host.glSurface();
+  const qreal dpr = gl->devicePixelRatio();
+  const std::string expectedMove =
+      "move " + std::to_string(qRound(10 * dpr)) + "," + std::to_string(qRound(20 * dpr));
 
   QTest::mouseMove(gl, QPoint(10, 20));
   QTest::mousePress(gl, Qt::LeftButton, Qt::NoModifier, QPoint(10, 20));
@@ -415,8 +499,8 @@ TEST(QtHost_MouseArrivesInDevicePixels)
   CHECK(!events.mouse.empty());
   bool moved = false;
   for (const auto& m : events.mouse)
-    moved = moved || m == "move 10,20";
-  CHECK(moved); // offscreen's device pixel ratio is 1
+    moved = moved || m == expectedMove;
+  CHECK(moved);
   CHECK_EQ(std::string("release"), events.mouse.back());
 }
 

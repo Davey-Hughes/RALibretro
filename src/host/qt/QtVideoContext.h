@@ -5,10 +5,10 @@
 // renders in. The same pair VideoContext.cpp makes with SDL on Windows.
 
 // Components.h:85, the NDEBUG debug() stub, leaves its 'fmt' parameter unused
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 #include "libretro/Components.h"
-#pragma clang diagnostic pop
+#pragma GCC diagnostic pop
 
 class QOpenGLContext;
 class QWindow;
@@ -23,6 +23,8 @@ namespace host
     QtVideoContext() = default;
     ~QtVideoContext();
 
+    // Until init succeeds (and after destroy) the three overrides do nothing
+    // but log, once.
     bool init(libretro::LoggerComponent* logger, QtHost& host);
     void destroy();
 
@@ -32,11 +34,15 @@ namespace host
 
   private:
     QOpenGLContext* createContext(QOpenGLContext* shareWith);
+    bool ready(const char* caller);
 
     libretro::LoggerComponent* _logger = nullptr;
     QWindow* _surface = nullptr;
     QOpenGLContext* _raContext = nullptr;
     QOpenGLContext* _coreContext = nullptr;
+    bool _ready = false; // init succeeded
     bool _loggedUnexposed = false;
+    bool _loggedNotReady = false;
+    bool _loggedNoCoreContext = false;
   };
 }

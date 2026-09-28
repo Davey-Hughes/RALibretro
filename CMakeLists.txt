@@ -80,6 +80,8 @@ set(SOURCES_CXX
 # under src/host are the whole boundary.
 add_library(ralibretro_qthost STATIC
   src/host/qt/QtHost.cpp
+  src/host/qt/HostServices.cpp
+  src/host/qt/KeyRouter.cpp
   src/host/qt/GlWindow.cpp
   src/host/qt/QtVideoContext.cpp
   src/host/qt/QtMenuBar.cpp
@@ -87,7 +89,8 @@ add_library(ralibretro_qthost STATIC
 )
 target_include_directories(ralibretro_qthost PUBLIC src src/libretro src/RAInterface)
 target_include_directories(ralibretro_qthost SYSTEM PUBLIC ${SDL2_INCLUDE_DIRS})
-target_link_libraries(ralibretro_qthost PUBLIC Qt6::Widgets Qt6::OpenGL)
+# PRIVATE: the public headers name no Qt type, so no includer needs Qt's.
+target_link_libraries(ralibretro_qthost PRIVATE Qt6::Widgets Qt6::OpenGL)
 target_compile_options(ralibretro_qthost PRIVATE -Wall -Wextra)
 
 add_executable(ralibretro_qthost_tests
@@ -96,7 +99,7 @@ add_executable(ralibretro_qthost_tests
   tests/menu/Runner.cpp
 )
 target_include_directories(ralibretro_qthost_tests PRIVATE tests/menu)
-target_link_libraries(ralibretro_qthost_tests PRIVATE ralibretro_qthost Qt6::Test ${SDL2_LIBRARIES})
+target_link_libraries(ralibretro_qthost_tests PRIVATE ralibretro_qthost Qt6::Widgets Qt6::OpenGL Qt6::Test ${SDL2_LIBRARIES})
 target_compile_options(ralibretro_qthost_tests PRIVATE -Wall -Wextra)
 add_test(NAME qthost COMMAND ralibretro_qthost_tests)
 

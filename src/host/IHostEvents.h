@@ -1,7 +1,12 @@
 #pragma once
 
 // What the host window tells Application. Implemented by Application off
-// Windows; called on the main thread only, from inside QtHost::pump().
+// Windows. Called on the main thread only, wherever Qt runs its event loop:
+// inside QtHost::pump(), inside QtHost::create() while it waits for the window
+// to be exposed, and inside any modal the host services run (messageBox, the
+// file dialogs, aboutDialog). So a callback must not destroy the QtHost or
+// rebuild its menu bar synchronously: the object that called it may still be
+// on the stack. Queue that work with host::postToMainThread instead.
 // No Qt here and no Win32 fakes: this header is included on both sides of
 // the Qt target's boundary.
 

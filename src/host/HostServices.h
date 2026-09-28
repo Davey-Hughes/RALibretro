@@ -47,7 +47,8 @@ namespace host
   // "Description (*.a *.b);;All Files (*)": the Qt form of a Win32 filter string.
   std::string toQtFileFilter(const std::string& win32Filter);
 
-  // About: the version line and the log, read-only.
+  // About: a modal dialog with RALibretro's copyright line and the log text,
+  // read-only, over an OK button.
   void aboutDialog(const char* logText);
 
   // A GL entry point from the current context (what SDL_GL_GetProcAddress did).

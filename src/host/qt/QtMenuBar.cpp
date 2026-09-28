@@ -25,22 +25,20 @@ void host::QtMenuBar::build(const std::vector<menu::IMenuSource*>& sources, size
   _bar->clear();
   _titles.clear();
 
-  for (size_t i = 0; i < sources.size(); ++i)
-  {
-    if (i == aboutAfter)
-    {
-      QAction* about = _bar->addAction(QStringLiteral("About"));
-      QObject::connect(about, &QAction::triggered, _bar, [this]() { _events.onAbout(); });
-      _titles += _titles.empty() ? "About" : ", About";
-    }
-    addSource(*sources[i], i);
-  }
-  if (aboutAfter >= sources.size())
-  {
+  const auto addAbout = [this]() {
     QAction* about = _bar->addAction(QStringLiteral("About"));
     QObject::connect(about, &QAction::triggered, _bar, [this]() { _events.onAbout(); });
     _titles += _titles.empty() ? "About" : ", About";
+  };
+
+  for (size_t i = 0; i < sources.size(); ++i)
+  {
+    if (i == aboutAfter)
+      addAbout();
+    addSource(*sources[i], i);
   }
+  if (aboutAfter >= sources.size())
+    addAbout();
 }
 
 void host::QtMenuBar::addSource(menu::IMenuSource& source, size_t index)
