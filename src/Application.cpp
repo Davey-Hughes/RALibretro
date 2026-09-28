@@ -2350,9 +2350,16 @@ void Application::handle(const SDL_SysWMEvent* syswm)
 {
 #ifdef _WIN32
   if (syswm->msg->msg.win.msg == WM_COMMAND)
-  {
-    WORD cmd = LOWORD(syswm->msg->msg.win.wParam);
+    handleCommand(LOWORD(syswm->msg->msg.win.wParam));
+#else
+  (void)syswm;
+#endif
+}
 
+// A menu command. On Windows it arrives as WM_COMMAND through the handler
+// above; off Windows the native menu bar calls it directly (Task 7).
+void Application::handleCommand(unsigned cmd)
+{
     switch (cmd)
     {
     case IDM_LOAD_GAME:
@@ -2542,10 +2549,6 @@ void Application::handle(const SDL_SysWMEvent* syswm)
 
       break;
     }
-  }
-#else
-  (void)syswm;
-#endif
 }
 
 void Application::handle(const SDL_WindowEvent* window)

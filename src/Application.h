@@ -117,6 +117,7 @@ protected:
   void        resizeWindow(int width, int height);
   void        toggleFullscreen();
   void        handle(const SDL_SysWMEvent* syswm);
+  void        handleCommand(unsigned cmd); // a menu command (IDM_*), from WM_COMMAND or the Linux menu bar
   void        handle(const SDL_WindowEvent* window);
   void        handle(const SDL_MouseMotionEvent* motion);
   void        handle(const SDL_MouseButtonEvent* button);

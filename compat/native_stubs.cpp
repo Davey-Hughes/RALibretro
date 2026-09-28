@@ -6,6 +6,7 @@
 
 #include "Util.h"
 #include "components/Config.h"
+#include "Emulator.h"
 
 #include <SDL.h>
 
@@ -34,4 +35,11 @@ void Config::showEmulatorSettingsDialog()
 {
   SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "Not implemented",
                            "The emulator settings dialog is not available in the native build yet.", nullptr);
+}
+
+bool showCoresDialog(Config*, Logger*, const std::string&, int)
+{
+  SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "Not implemented",
+                           "The core management dialog is not available in the native build yet.", nullptr);
+  return false;
 }
