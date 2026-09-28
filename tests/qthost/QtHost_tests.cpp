@@ -3,6 +3,7 @@
 #include "host/HostServices.h"
 #include "host/IHostEvents.h"
 #include "host/qt/QtHost.h"
+#include "host/qt/QtVideoContext.h"
 // Components.h:85, the NDEBUG debug() stub, leaves its 'fmt' parameter unused
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
@@ -16,11 +17,14 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMainWindow>
+#include <QOpenGLContext>
 #include <QToolButton>
 #include <QWidget>
 #include <QWindow>
 #include <QtTest/QTest>
 
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <thread>
 #include <vector>
@@ -531,6 +535,85 @@ TEST(QtHost_CloseButtonAsksAndDoesNotClose)
   window->close();
   CHECK_EQ(1, events.closes);
   CHECK(window->isVisible());
+}
+
+TEST(QtHost_VideoContextSharesAndSwaps)
+{
+  TestLogger logger;
+  Events events;
+  host::QtHost host(&logger, events);
+  CHECK(host.create("test", 64, 64));
+
+  // The offscreen platform has OpenGL only by borrowing GLX from the X display
+  // DISPLAY names: with DISPLAY unset no context can be made at all, and there
+  // is nothing here to test. Said out loud, so a headless run cannot pass it
+  // silently.
+  {
+    QOpenGLContext probe;
+    if (!probe.create())
+    {
+      std::printf("SKIP QtHost_VideoContextSharesAndSwaps: no OpenGL context can be made on the %s platform "
+                  "here (offscreen borrows GLX from DISPLAY, which is %s)\n",
+                  QGuiApplication::platformName().toUtf8().constData(),
+                  std::getenv("DISPLAY") != nullptr ? "set" : "unset");
+      return;
+    }
+  }
+
+  host::QtVideoContext ctx;
+  CHECK(ctx.init(&logger, host));
+  bool reported = false;
+  for (const auto& line : logger.lines)
+    reported = reported || (line.find("OpenGL ") != std::string::npos && line.find(" profile, contexts share: 1") != std::string::npos);
+  CHECK(reported);
+
+  // the RA context and the core context: two contexts, sharing
+  ctx.enableCoreContext(false);
+  QOpenGLContext* ra = QOpenGLContext::currentContext();
+  ctx.enableCoreContext(true);
+  QOpenGLContext* core = QOpenGLContext::currentContext();
+  CHECK(ra != nullptr);
+  CHECK(core != nullptr);
+  if (ra == nullptr || core == nullptr)
+    return; // areSharing dereferences both
+  CHECK(core != ra);
+  CHECK(QOpenGLContext::areSharing(ra, core));
+
+  // a reset replaces the core context with a new one, still sharing with RA's
+  // (the old one's destruction is the proof it is new: its address may be reused)
+  bool oldCoreDestroyed = false;
+  QObject::connect(core, &QObject::destroyed, [&oldCoreDestroyed]() { oldCoreDestroyed = true; });
+  ctx.resetCoreContext();
+  ctx.enableCoreContext(true);
+  QOpenGLContext* newCore = QOpenGLContext::currentContext();
+  CHECK(oldCoreDestroyed);
+  CHECK(newCore != nullptr);
+  if (newCore == nullptr)
+    return;
+  CHECK(newCore != ra);
+  CHECK(QOpenGLContext::areSharing(ra, newCore));
+
+  // presents, as Video makes them: with the RA context current
+  ctx.enableCoreContext(false);
+  CHECK(host.glSurface()->isExposed());
+  size_t linesBefore = logger.lines.size();
+  ctx.swapBuffers();
+  ctx.swapBuffers();
+  CHECK_EQ(linesBefore, logger.lines.size());
+
+  // hidden, the window is not exposed: presents are skipped, logged once
+  host.renderWidget()->window()->hide();
+  host.pump();
+  CHECK(!host.glSurface()->isExposed());
+  linesBefore = logger.lines.size();
+  ctx.swapBuffers();
+  ctx.swapBuffers();
+  CHECK_EQ(linesBefore + 1, logger.lines.size());
+  if (logger.lines.size() == linesBefore + 1)
+    CHECK(logger.lines.back().find("not exposed") != std::string::npos);
+
+  ctx.destroy();
+  CHECK(QOpenGLContext::currentContext() == nullptr);
 }
 
 TEST(QtHost_Win32FilterBecomesAQtFilter)
