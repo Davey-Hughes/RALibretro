@@ -340,6 +340,67 @@ TEST(QtHost_KeysArriveAsSdlKeycodesByEveryRoute)
   CHECK(passedToTheContainer);
 }
 
+TEST(QtHost_KeysGoToTheMenuBarWhileItHasFocus)
+{
+  TestLogger logger;
+  Events events;
+  host::QtHost host(&logger, events);
+  CHECK(host.create("test", 320, 240));
+  FakeSource file;
+  file.menu.title = "File";
+  file.menu.items = {item("Exit", 40002)};
+  FakeSource ra;
+  ra.menu.title = "RetroAchievements";
+  ra.menu.items = {item("Login", 1701)};
+  host.buildMenuBar({&file, &ra}, 1);
+  auto* mainWindow = qobject_cast<QMainWindow*>(host.renderWidget()->window());
+  CHECK(mainWindow != nullptr);
+  if (mainWindow == nullptr)
+    return;
+  QMenuBar* bar = mainWindow->menuBar();
+  QWindow* toplevel = mainWindow->windowHandle();
+
+  // An Alt tap: the game sees its press and its release (the game area had the
+  // focus when it went down), then the bar takes the focus.
+  QTest::keyClick(toplevel, Qt::Key_Alt);
+  CHECK_EQ(size_t(2), events.keys.size());
+  const QWidget* focus = QApplication::focusWidget();
+  if (focus == nullptr || focus == host.renderWidget())
+  {
+    menutests::fail(__FILE__, __LINE__,
+                    "the menu bar did not take the focus on Alt under the " +
+                        QApplication::platformName().toStdString() + " platform, so this test proves nothing");
+    return;
+  }
+
+  // the bar has the keyboard: Right moves along the bar, and the game sees nothing
+  const QAction* activeBefore = bar->activeAction();
+  const size_t beforeRight = events.keys.size();
+  QTest::keyClick(toplevel, Qt::Key_Right);
+  CHECK_EQ(beforeRight, events.keys.size());
+  CHECK(bar->activeAction() != activeBefore);
+
+  // A second Alt tap leaves the bar and gives the focus back to the game area.
+  // Its press went to the bar, so its release does not reach the game either.
+  const size_t beforeSecondAlt = events.keys.size();
+  QTest::keyClick(toplevel, Qt::Key_Alt);
+  CHECK(QApplication::focusWidget() == host.renderWidget());
+  CHECK_EQ(beforeSecondAlt, events.keys.size());
+
+  const size_t beforeA = events.keys.size();
+  QTest::keyClick(toplevel, Qt::Key_A);
+  CHECK_EQ(beforeA + 2, events.keys.size());
+  if (events.keys.size() == beforeA + 2)
+    CHECK_EQ(std::to_string(SDLK_a) + ":0:1:0", events.keys[beforeA]);
+
+  // Escape leaves the bar too, and is the bar's: neither half reaches the game
+  QTest::keyClick(toplevel, Qt::Key_Alt);
+  const size_t beforeEscape = events.keys.size();
+  QTest::keyClick(toplevel, Qt::Key_Escape);
+  CHECK(QApplication::focusWidget() == host.renderWidget());
+  CHECK_EQ(beforeEscape, events.keys.size());
+}
+
 TEST(QtHost_MouseArrivesInDevicePixels)
 {
   TestLogger logger;

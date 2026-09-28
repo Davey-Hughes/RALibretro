@@ -32,6 +32,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <mutex>
+#include <unordered_set>
 #include <vector>
 
 #define TAG "[QT] "
@@ -60,6 +61,14 @@ namespace
   // toplevel, which passes what this filter leaves on to the focus widget), or
   // to the container widget. Each key must reach IHostEvents once, and Alt must
   // still reach the widget tree so QMenuBar can react to it. So:
+  // - on the toplevel, a key press is the game's only while the game area has
+  //   focus: no focus widget, or the container or a widget inside it. While
+  //   another widget has focus - the menu bar after an Alt tap - the key is
+  //   left alone, unforwarded, so arrows, Enter and Escape drive that widget.
+  // - a release is forwarded exactly when its press was, wherever the focus
+  //   has gone in between: QMenuBar takes the focus on Alt's release, before
+  //   this filter sees that release, and the game must not be left holding Alt
+  //   (nor be sent the release of an Escape that closed the bar).
   // - on the GL window or the toplevel, a key is forwarded. A non-modifier is
   //   consumed there; a bare modifier (Shift, Ctrl, Alt, Meta, ...) is not, so
   //   Qt goes on delivering it.
@@ -71,7 +80,7 @@ namespace
   class KeyRouter : public QObject
   {
   public:
-    KeyRouter(host::IHostEvents& events, QObject* glWindow, QObject* container, QObject* mainWindowHandle)
+    KeyRouter(host::IHostEvents& events, QObject* glWindow, QWidget* container, QObject* mainWindowHandle)
       : _events(events), _glWindow(glWindow), _container(container), _mainWindowHandle(mainWindowHandle)
     {
     }
@@ -85,8 +94,6 @@ namespace
       const bool onContainer = receiver == _container;
       if (receiver != _glWindow && receiver != _mainWindowHandle && !onContainer)
         return false;
-      if (QApplication::activePopupWidget() != nullptr)
-        return false; // an open menu owns the keyboard
 
       auto* keyEvent = static_cast<QKeyEvent*>(event);
       const bool modifier = isModifier(keyEvent->key());
@@ -97,11 +104,31 @@ namespace
       if (key.sym == SDLK_UNKNOWN)
         return false;
 
+      if (type == QEvent::KeyRelease)
+      {
+        if (_held.erase(key.sym) == 0)
+          return false; // its press went elsewhere, so does it
+      }
+      else
+      {
+        if (QApplication::activePopupWidget() != nullptr)
+          return false; // an open menu owns the keyboard
+        if (receiver == _mainWindowHandle && !gameAreaHasFocus())
+          return false; // another widget - the menu bar after an Alt tap - owns the keyboard
+        _held.insert(key.sym);
+      }
+
       _events.onKey(key.sym, key.mod, type == QEvent::KeyPress, keyEvent->isAutoRepeat());
       return !modifier;
     }
 
   private:
+    bool gameAreaHasFocus() const
+    {
+      const QWidget* focus = QApplication::focusWidget();
+      return focus == nullptr || focus == _container || _container->isAncestorOf(focus);
+    }
+
     static bool isModifier(int key)
     {
       switch (key)
@@ -123,8 +150,9 @@ namespace
 
     host::IHostEvents& _events;
     QObject* _glWindow;
-    QObject* _container;
+    QWidget* _container;
     QObject* _mainWindowHandle;
+    std::unordered_set<SDL_Keycode> _held; // pressed through to the game, not yet released
   };
 
   // postToMainThread's target and the dialogs' parent, published while a QtHost lives.
