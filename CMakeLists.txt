@@ -114,12 +114,17 @@ target_link_libraries(RALibretro PRIVATE ${SDL2_LIBRARIES} OpenGL::GL dl pthread
 # the tests also run under ASan and UBSan.
 set(MENU_WARNINGS -Wall -Wextra)
 
+find_package(Qt6 REQUIRED COMPONENTS Core)
+
 add_executable(ralibretro_menu_tests
   tests/menu/main.cpp
   tests/menu/RAMenuSource_tests.cpp
+  tests/menu/QtKeyMap_tests.cpp
   src/menu/RAMenuSource.cpp
+  src/host/qt/QtKeyMap.cpp
 )
 target_include_directories(ralibretro_menu_tests PRIVATE src src/RAInterface ${SDL2_INCLUDE_DIRS})
+target_link_libraries(ralibretro_menu_tests PRIVATE Qt6::Core ${SDL2_LIBRARIES})
 target_compile_options(ralibretro_menu_tests PRIVATE
   ${MENU_WARNINGS} -fsanitize=address,undefined -fno-omit-frame-pointer)
 target_link_options(ralibretro_menu_tests PRIVATE -fsanitize=address,undefined)
