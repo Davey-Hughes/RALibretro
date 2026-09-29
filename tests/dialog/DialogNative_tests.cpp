@@ -1,6 +1,10 @@
 #include "Check.h"
 
+// Dialog.h's default dialogProc leaves its parameters unused (Windows-visible); the warning stops here.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 #include "components/Dialog.h"
+#pragma GCC diagnostic pop
 #include "components/DialogNative.h"
 #include "host/HostServices.h"
 
