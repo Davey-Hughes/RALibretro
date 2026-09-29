@@ -51,7 +51,7 @@ set(SOURCES_CXX
   src/RA_Implementation.cpp
   src/components/Audio.cpp
   src/components/Config.cpp
-  compat/Dialog_stub.cpp
+  src/components/DialogNative.cpp
   compat/native_stubs.cpp
   src/components/Input.cpp
   src/components/Logger.cpp
@@ -157,7 +157,7 @@ target_link_libraries(RALibretro PRIVATE ${SDL2_LIBRARIES} OpenGL::GL dl pthread
 
 # Application's Linux-only members are new code too; unlike the menu they are
 # part of the application, and keep its force-include.
-set_source_files_properties(src/ApplicationNative.cpp PROPERTIES COMPILE_OPTIONS "${MENU_WARNINGS}")
+set_source_files_properties(src/ApplicationNative.cpp src/components/DialogNative.cpp PROPERTIES COMPILE_OPTIONS "${MENU_WARNINGS}")
 
 # --- native menu tests ---------------------------------------------------------
 # The menu's logic has unit tests of its own: RALibretro has no test framework.
@@ -182,3 +182,19 @@ target_link_options(ralibretro_menu_tests PRIVATE -fsanitize=address,undefined)
 
 enable_testing()
 add_test(NAME menu COMMAND ralibretro_menu_tests)
+
+# --- the Linux Dialog's tests ---------------------------------------------------
+# components/DialogNative.cpp without Qt: a fake host::runDialog answers for the user. Under the sanitizers, as
+# the menu tests are, so compiled here rather than linked from the application.
+add_executable(ralibretro_dialog_tests
+  tests/menu/main.cpp
+  tests/menu/Runner.cpp
+  tests/dialog/DialogNative_tests.cpp
+  src/components/DialogNative.cpp
+)
+target_include_directories(ralibretro_dialog_tests PRIVATE src compat tests/menu ${SDL2_INCLUDE_DIRS})
+target_link_libraries(ralibretro_dialog_tests PRIVATE ${SDL2_LIBRARIES})
+target_compile_options(ralibretro_dialog_tests PRIVATE
+  ${MENU_WARNINGS} -fsanitize=address,undefined -fno-omit-frame-pointer)
+target_link_options(ralibretro_dialog_tests PRIVATE -fsanitize=address,undefined)
+add_test(NAME dialog COMMAND ralibretro_dialog_tests)

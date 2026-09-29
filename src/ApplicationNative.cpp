@@ -18,6 +18,7 @@
 
 #include "menu/HostMenu.h"
 #include "menu/RAMenuSource.h"
+#include "components/DialogNative.h"
 
 #include "resource.h"
 #include "Emulator.h"
@@ -200,6 +201,17 @@ void Application::s_pauseForBadPerformance(void* app)
   // the audio thread posted this while the game ran; it may have stopped since
   if (self->_fsm.currentState() == Fsm::State::GameRunning)
     self->pauseForBadPerformance();
+}
+
+// ---- the Linux Dialog's link to the application (components/DialogNative.h)
+
+// File scope, as Core.cpp's: a block-scope extern here would bind within namespace dialognative (the function's
+// namespace, not the global one), leaving the real ::app unresolved at link time.
+extern Application app;
+
+bool dialognative::backgroundInputEnabled()
+{
+  return app.config().getBackgroundInput();
 }
 
 #endif
