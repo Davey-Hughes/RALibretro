@@ -5,6 +5,8 @@
 
 #include <QMenuBar>
 
+class QStyle;
+
 #include <string>
 #include <vector>
 
@@ -27,6 +29,7 @@ namespace host
 
     QMenuBar* _bar;
     IHostEvents& _events;
+    QStyle* _menuStyle = nullptr; // every menu's: room for a submenu's arrow (the bar's child)
     std::string _titles;
   };
 }

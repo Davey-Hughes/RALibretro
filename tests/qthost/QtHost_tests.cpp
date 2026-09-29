@@ -20,6 +20,9 @@
 #include <QMessageBox>
 #include <QOpenGLContext>
 #include <QOpenGLFunctions>
+#include <QStyle>
+#include <QStyleFactory>
+#include <QStyleOptionMenuItem>
 #include <QSurfaceFormat>
 #include <QTimer>
 #include <QToolButton>
@@ -224,6 +227,123 @@ TEST(QtHost_MenuBarBuildsFromSourcesAndDispatches)
   // About is the bar's own action
   bar[1]->trigger();
   CHECK_EQ(1, events.abouts);
+}
+
+TEST(QtHost_AboutGoesLastAfterEverySource)
+{
+  TestLogger logger;
+  Events events;
+  host::QtHost host(&logger, events);
+  CHECK(host.create("test", 64, 64));
+
+  FakeSource file;
+  file.menu.title = "File";
+  FakeSource settings;
+  settings.menu.title = "Settings";
+  FakeSource ra;
+  ra.menu.title = "RetroAchievements";
+
+  // as Application asks: About after all three
+  host.buildMenuBar({&file, &settings, &ra}, 3);
+  CHECK_EQ(std::string("File, Settings, RetroAchievements, About"), host.menuBarTitles());
+
+  auto* mainWindow = qobject_cast<QMainWindow*>(host.renderWidget()->window());
+  CHECK(mainWindow != nullptr);
+  if (mainWindow == nullptr)
+    return;
+  const QList<QAction*> bar = mainWindow->menuBar()->actions();
+  CHECK_EQ(4, static_cast<int>(bar.size()));
+  if (bar.size() != 4)
+    return;
+  CHECK(bar[3]->menu() == nullptr);
+  bar[3]->trigger();
+  CHECK_EQ(1, events.abouts);
+}
+
+TEST(QtHost_ASubmenuArrowHasRoom)
+{
+  // The Settings menu as it is with no game loaded: two submenus, and the
+  // widest item is one of them.
+  FakeSource settings;
+  settings.menu.title = "Settings";
+  menu::MenuItem input;
+  input.label = "Input";
+  input.children = {item("Controller 1", 1)};
+  menu::MenuItem windowSize;
+  windowSize.label = "Window Size";
+  windowSize.children = {item("1x", 2)};
+  settings.menu.items = {input, windowSize};
+
+  const QString styleBefore = QApplication::style()->objectName();
+  for (const char* styleName : {"fusion", "breeze"})
+  {
+    QStyle* style = QStyleFactory::create(QString::fromLatin1(styleName));
+    if (style == nullptr)
+    {
+      std::printf("SKIP QtHost_ASubmenuArrowHasRoom for %s: no such style plugin here\n", styleName);
+      continue;
+    }
+    QApplication::setStyle(style); // the application owns it now
+
+    TestLogger logger;
+    Events events;
+    host::QtHost host(&logger, events);
+    CHECK(host.create("test", 64, 64));
+    host.buildMenuBar({&settings}, 1);
+    auto* mainWindow = qobject_cast<QMainWindow*>(host.renderWidget()->window());
+    CHECK(mainWindow != nullptr);
+    if (mainWindow == nullptr)
+      continue;
+    QMenu* menu = mainWindow->menuBar()->actions().at(0)->menu();
+    CHECK(menu != nullptr);
+    if (menu == nullptr)
+      continue;
+
+    emit menu->aboutToShow();
+    menu->ensurePolished();
+    menu->sizeHint(); // lays the items out
+    CHECK_EQ(2, static_cast<int>(menu->actions().size()));
+    if (menu->actions().size() != 2)
+      continue;
+    const int width = menu->actionGeometry(menu->actions().at(1)).width();
+
+    // what the style makes of "Window Size" with a submenu and without
+    QStyleOptionMenuItem plain;
+    plain.initFrom(menu);
+    plain.menuItemType = QStyleOptionMenuItem::Normal;
+    plain.text = QStringLiteral("Window Size");
+    plain.fontMetrics = menu->fontMetrics();
+    plain.menuHasCheckableItems = false; // none in this menu; the option's default is true
+    QStyleOptionMenuItem withSubmenu = plain;
+    withSubmenu.menuItemType = QStyleOptionMenuItem::SubMenu;
+    const QSize contents(plain.fontMetrics.horizontalAdvance(plain.text), plain.fontMetrics.height());
+    const int plainWidth = style->sizeFromContents(QStyle::CT_MenuItem, &plain, contents, menu).width();
+    const int submenuWidth = style->sizeFromContents(QStyle::CT_MenuItem, &withSubmenu, contents, menu).width();
+    const int arrow = style->pixelMetric(QStyle::PM_MenuButtonIndicator, nullptr, menu);
+
+    if (submenuWidth > plainWidth)
+    {
+      // the style keeps room for the arrow itself (Fusion): the menu is left as it is
+      if (width != submenuWidth)
+        std::printf("     %s: item width %d, the style's own %d\n", styleName, width, submenuWidth);
+      CHECK_EQ(submenuWidth, width);
+    }
+    else
+    {
+      // it does not (Breeze): the item is wider than the text needs by the arrow
+      if (width < plainWidth + arrow)
+        std::printf("     %s: item width %d, want %d + %d for the arrow\n", styleName, width, plainWidth, arrow);
+      CHECK(width >= plainWidth + arrow);
+    }
+
+    // opened again, the menu is filled again: it must not grow each time
+    emit menu->aboutToShow();
+    menu->sizeHint();
+    CHECK_EQ(2, static_cast<int>(menu->actions().size()));
+    if (menu->actions().size() == 2)
+      CHECK_EQ(width, menu->actionGeometry(menu->actions().at(1)).width());
+  }
+  QApplication::setStyle(QStyleFactory::create(styleBefore));
 }
 
 TEST(QtHost_RebuildingAMenuLeaksNoSubmenus)

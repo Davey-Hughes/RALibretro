@@ -179,7 +179,10 @@ void Application::createMenuBar()
   _raMenu = std::make_unique<menu::RAMenuSource>(RA_GetPopupMenuItems, RA_InvokeDialog);
 
   _menuSources = {_fileMenu.get(), _settingsMenu.get(), _raMenu.get()};
-  _host->buildMenuBar(_menuSources, 2); // File, Settings, About, RetroAchievements: Windows appends RA after About
+  // File, Settings, RetroAchievements, About. Windows has About before
+  // RetroAchievements (it appends RA's menu to a bar that ends with About);
+  // here About is last, where a menu bar's help and about entries go.
+  _host->buildMenuBar(_menuSources, _menuSources.size());
 }
 
 void Application::markRAMenuDirty()
