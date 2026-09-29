@@ -27,6 +27,10 @@ along with RALibretro.  If not, see <http://www.gnu.org/licenses/>.
 #include "Application.h"
 #include "Util.h"
 
+#ifndef _WIN32
+#include "host/HostServices.h"
+#endif
+
 #include <signal.h>
 
 extern Application app;
@@ -75,6 +79,14 @@ extern "C" void abort_handler(int signal_number)
 int main(int argc, char* argv[])
 {
   signal(SIGABRT, &abort_handler);
+
+#ifndef _WIN32
+  // The Qt application lives on this thread, from before Application::init to
+  // after destroy(): RA_Init finds it and libRA_Integration.so borrows it.
+  host::QtApplicationScope qt(argc, argv);
+  if (!qt.ok())
+    return 1;
+#endif
 
   bool ok = app.init("RALibRetro", 640, 480);
   ok &= app.handleArgs(argc, argv);

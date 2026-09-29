@@ -3,6 +3,10 @@
 #include <SDL_video.h>
 #include <SDL_opengl_glext.h>
 
+#ifndef _WIN32
+#include "host/HostServices.h"
+#endif
+
 #define TAG "[OGL] "
 
 static libretro::LoggerComponent* s_logger;
@@ -61,7 +65,11 @@ static PFNGLBINDSAMPLERPROC s_glBindSampler;
 
 static void* getProcAddress(const char* symbol)
 {
+#ifdef _WIN32
   void* address = SDL_GL_GetProcAddress(symbol);
+#else
+  void* address = host::getProcAddress(symbol); // from the current QOpenGLContext
+#endif
 
   if (address == NULL)
   {

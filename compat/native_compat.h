@@ -16,6 +16,7 @@ inline int localtime_s(std::tm* pResult, const std::time_t* pTime)
 
 #include <wtypes.h>
 #include <SDL.h>
+#include "host/HostServices.h"
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -28,7 +29,7 @@ inline int ra_compat_chdir(const char* sPath) { return ::chdir(sPath); }
 #define strnicmp strncasecmp
 #define stricmp strcasecmp
 
-/* Win32 MessageBox -> SDL's message box. */
+/* Win32 MessageBox -> a Qt message box (host::messageBox). */
 enum {
     MB_OK = 0x0000, MB_OKCANCEL = 0x0001, MB_YESNO = 0x0004,
     MB_ICONERROR = 0x0010, MB_ICONQUESTION = 0x0020,
@@ -39,16 +40,7 @@ enum { IDOK = 1, IDCANCEL = 2, IDYES = 6, IDNO = 7 };
 
 inline int MessageBox(HWND, const char* sText, const char* sCaption, unsigned nFlags)
 {
-    Uint32 nSdlFlags = SDL_MESSAGEBOX_INFORMATION;
-    if (nFlags & MB_ICONERROR)
-        nSdlFlags = SDL_MESSAGEBOX_ERROR;
-    else if ((nFlags & MB_ICONWARNING) == MB_ICONWARNING)
-        nSdlFlags = SDL_MESSAGEBOX_WARNING;
-
-    SDL_ShowSimpleMessageBox(nSdlFlags, sCaption, sText, nullptr);
-
-    /* no native prompt yet, so anything asking a question gets the safe answer */
-    return (nFlags & (MB_YESNO | MB_OKCANCEL)) ? IDNO : IDOK;
+    return host::messageBox(sText, sCaption, nFlags); // a QMessageBox on the main window; IDOK/IDCANCEL/IDYES/IDNO
 }
 
 

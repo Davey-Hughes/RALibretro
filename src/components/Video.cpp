@@ -28,6 +28,10 @@ along with RALibretro.  If not, see <http://www.gnu.org/licenses/>.
 
 #include <SDL_render.h>
 
+#ifndef _WIN32
+#include "host/HostServices.h"
+#endif
+
 #include <math.h>
 
 #define TAG "[VID] "
@@ -394,7 +398,11 @@ uintptr_t Video::getCurrentFramebuffer()
 
 retro_proc_address_t Video::getProcAddress(const char* symbol)
 {
+#ifdef _WIN32
   void* address = SDL_GL_GetProcAddress(symbol);
+#else
+  void* address = host::getProcAddress(symbol); // from the current QOpenGLContext
+#endif
   _logger->debug(TAG "OpenGL symbol: %p resolved for %s", address, symbol);
   return (retro_proc_address_t)address;
 }

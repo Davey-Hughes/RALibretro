@@ -136,7 +136,7 @@ target_compile_options(RALibretro PRIVATE
   $<$<COMPILE_LANGUAGE:CXX>:native_compat.h>
 )
 target_include_directories(RALibretro PRIVATE ${SDL2_INCLUDE_DIRS})
-target_link_libraries(RALibretro PRIVATE ${SDL2_LIBRARIES} OpenGL::GL dl pthread)
+target_link_libraries(RALibretro PRIVATE ${SDL2_LIBRARIES} OpenGL::GL dl pthread ralibretro_qthost)
 
 # --- native menu -------------------------------------------------------------
 # The menu's logic (no ImGui, no GL, no RA library) has unit tests of its own:

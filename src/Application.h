@@ -19,6 +19,7 @@ along with RALibretro.  If not, see <http://www.gnu.org/licenses/>.
 
 #pragma once
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -41,7 +42,20 @@ along with RALibretro.  If not, see <http://www.gnu.org/licenses/>.
 #include "Memory.h"
 #include "States.h"
 
+#ifndef _WIN32
+#include "host/IHostEvents.h"
+
+namespace host
+{
+  class QtHost;
+  class QtVideoContext;
+}
+#endif
+
 class Application
+#ifndef _WIN32
+  : public host::IHostEvents // the Qt host window's events arrive here
+#endif
 {
 public:
   Application();
@@ -118,6 +132,16 @@ protected:
   void        toggleFullscreen();
   void        handle(const SDL_SysWMEvent* syswm);
   void        handleCommand(unsigned cmd); // a menu command (IDM_*), from WM_COMMAND or the Linux menu bar
+#ifndef _WIN32
+  // host::IHostEvents, called from inside QtHost::pump()
+  void        onKey(SDL_Keycode sym, Uint16 mod, bool pressed, bool repeat) override;
+  void        onMouseMove(int x, int y) override;
+  void        onMouseButton(host::MouseButton button, bool pressed) override;
+  void        onResized(int width, int height) override;
+  void        onCloseRequested() override;
+  void        onMenuCommand(size_t sourceIndex, int id) override;
+  void        onAbout() override;
+#endif
   void        handle(const SDL_WindowEvent* window);
   void        handle(const SDL_MouseMotionEvent* motion);
   void        handle(const SDL_MouseButtonEvent* button);
@@ -144,14 +168,26 @@ protected:
   std::string _coreName;
   int         _system;
 
+#ifdef _WIN32
   SDL_Window*       _window;
+#else
+  std::unique_ptr<host::QtHost> _host;
+  unsigned          _framesRun = 0; // logged at shutdown: "ran <n> frames"
+  // true between _video.init and _video.destroy: Qt delivers resizes from inside
+  // QtHost::create() and any modal, before _video exists and while it goes away
+  bool              _videoReady = false;
+#endif
   SDL_AudioSpec     _audioSpec;
   SDL_AudioDeviceID _audioDev;
 
   Fifo         _fifo;
   Logger       _logger;
   Config       _config;
+#ifdef _WIN32
   VideoContext _videoContext;
+#else
+  std::unique_ptr<host::QtVideoContext> _videoContext;
+#endif
   Video        _video;
   Audio        _audio;
   Microphone   _microphone;

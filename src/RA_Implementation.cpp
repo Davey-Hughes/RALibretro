@@ -9,31 +9,15 @@
 #include "RA_BuildVer.h"
 
 #ifndef _WIN32
-#include <SDL.h>
+#include "host/HostServices.h"
 
 // RA_InstallHostDispatcher's post function. The toolkit calls it from any
-// thread, so it only pushes an event - SDL_PushEvent is thread-safe - and
-// Application::processEvents runs the work on the main thread, paused or not.
-static Uint32 s_nRAHostWorkEvent = 0;
-
+// thread; the work runs on the main thread inside QtHost::pump() - including
+// inside a modal dialog's nested event loop, as a Win32 modal loop services
+// PostMessage.
 static void PostToMainThread(void (*fpWork)(void*), void* pContext)
 {
-  SDL_Event event;
-  SDL_zero(event);
-  event.type = s_nRAHostWorkEvent;
-  event.user.data1 = reinterpret_cast<void*>(fpWork);
-  event.user.data2 = pContext;
-  SDL_PushEvent(&event);
-}
-
-bool RA_HandleHostWorkEvent(const SDL_Event* pEvent)
-{
-  if (s_nRAHostWorkEvent == 0 || pEvent->type != s_nRAHostWorkEvent)
-    return false;
-
-  auto fpWork = reinterpret_cast<void (*)(void*)>(pEvent->user.data1);
-  fpWork(pEvent->user.data2);
-  return true;
+  host::postToMainThread(fpWork, pContext);
 }
 #endif
 
@@ -141,14 +125,8 @@ void RA_Init(HWND hWnd)
   RA_InstallSharedFunctions(NULL, &CauseUnpause, &CausePause, &RebuildMenu, &GetEstimatedGameTitle, &ResetEmulation, &LoadROM);
 
 #ifndef _WIN32
-  // the toolkit's worker and UI threads hand the callbacks above back to this
-  // thread through SDL's event queue
-  const Uint32 nEvent = SDL_RegisterEvents(1);
-  if (nEvent != (Uint32)-1)
-  {
-    s_nRAHostWorkEvent = nEvent;
-    RA_InstallHostDispatcher(&PostToMainThread);
-  }
+  // the toolkit's worker threads hand the callbacks above back to this thread through Qt's event loop
+  RA_InstallHostDispatcher(&PostToMainThread);
 #endif
 
   // add a placeholder menu item and start the login process - menu will be updated when login completes

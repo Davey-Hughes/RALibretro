@@ -1,45 +1,39 @@
 /* Native replacements for RALibretro's Win32-only UI entry points.
  *
  * These keep the frontend runnable on Linux while the real dialogs are still
- * Win32: file pickers and the settings dialogs report "not available" instead
- * of opening a window. Replacing them is part of the Qt port. */
+ * Win32: the file pickers are Qt's, and the settings and cores dialogs report
+ * "not available" instead of opening a window. Replacing them is part of the
+ * Qt port. */
 
 #include "Util.h"
 #include "components/Config.h"
 #include "Emulator.h"
 
-#include <SDL.h>
+#include "host/HostServices.h"
 
-std::string util::openFileDialog(HWND, const std::string&, const std::string&)
+std::string util::openFileDialog(HWND, const std::string& extensionsFilter, const std::string& initialDirectory)
 {
-  SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "Not implemented",
-                           "File selection is not available in the native build yet.\n"
-                           "Pass a game with -c <core> -s <system> -g <game>.", nullptr);
-  return std::string();
+  return host::openFileDialog(extensionsFilter, initialDirectory);
 }
 
-std::string util::saveFileDialog(HWND, const std::string&, const char*, const std::string&)
+std::string util::saveFileDialog(HWND, const std::string& extensionsFilter, const char* defaultExtension,
+                                 const std::string& initialDirectory)
 {
-  SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "Not implemented",
-                           "File selection is not available in the native build yet.", nullptr);
-  return std::string();
+  return host::saveFileDialog(extensionsFilter, defaultExtension, initialDirectory);
 }
 
 void Config::showDialog(const std::string&, Input&)
 {
-  SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "Not implemented",
-                           "The core settings dialog is not available in the native build yet.", nullptr);
+  host::messageBox("The core settings dialog is not available in the native build yet.", "Not implemented", 0);
 }
 
 void Config::showEmulatorSettingsDialog()
 {
-  SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "Not implemented",
-                           "The emulator settings dialog is not available in the native build yet.", nullptr);
+  host::messageBox("The emulator settings dialog is not available in the native build yet.", "Not implemented", 0);
 }
 
 bool showCoresDialog(Config*, Logger*, const std::string&, int)
 {
-  SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "Not implemented",
-                           "The core management dialog is not available in the native build yet.", nullptr);
+  host::messageBox("The core management dialog is not available in the native build yet.", "Not implemented", 0);
   return false;
 }

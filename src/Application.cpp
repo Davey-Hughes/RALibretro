@@ -41,6 +41,12 @@ along with RALibretro.  If not, see <http://www.gnu.org/licenses/>.
 #include "resource.h"
 #include "MenuItems.h"
 
+#ifndef _WIN32
+#include "host/HostServices.h"
+#include "host/qt/QtHost.h"
+#include "host/qt/QtVideoContext.h"
+#endif
+
 #include <assert.h>
 #include <chrono>
 #include <time.h>
@@ -81,10 +87,6 @@ along with RALibretro.  If not, see <http://www.gnu.org/licenses/>.
 
 //#define DEBUG_AUDIO 1
 
-#ifndef _WIN32
-bool RA_HandleHostWorkEvent(const SDL_Event* pEvent);
-#endif
-
 HWND g_mainWindow;
 Application app;
 
@@ -99,7 +101,11 @@ Application::Application(): _fsm(*this)
 {
   _components.logger       = &_logger;
   _components.config       = &_config;
+#ifdef _WIN32
   _components.videoContext = &_videoContext;
+#else
+  _components.videoContext = NULL; // init() points it at the Qt host's context
+#endif
   _components.video        = &_video;
   _components.audio        = &_audio;
   _components.microphone   = &_microphone;
@@ -169,7 +175,14 @@ bool Application::init(const char* title, int width, int height)
   inited = kAllocatorInited;
 
   // Setup SDL
+#ifdef _WIN32
   if (SDL_Init(SDL_INIT_EVERYTHING) != 0)
+#else
+  // No SDL window off Windows: the Qt host owns the window, the GL surface and
+  // the keyboard and mouse. SDL keeps audio, controllers, haptics and its event
+  // queue (SDL_QUIT from Ctrl+C and SIGTERM still arrives through it).
+  if (SDL_Init(SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER | SDL_INIT_HAPTIC | SDL_INIT_EVENTS) != 0)
+#endif
   {
     _logger.error(TAG "SDL_Init: %s", SDL_GetError());
     goto error;
@@ -196,6 +209,7 @@ bool Application::init(const char* title, int width, int height)
     int window_x = SDL_WINDOWPOS_CENTERED, window_y = SDL_WINDOWPOS_CENTERED;
 
     loadConfiguration(&window_x, &window_y, &width, &height);
+#ifdef _WIN32
     if (window_y != SDL_WINDOWPOS_CENTERED)
     {
       // captured window position includes menu bar, which won't exist at initial positioning
@@ -219,8 +233,21 @@ bool Application::init(const char* title, int width, int height)
     SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 1);
 
     _window = SDL_CreateWindow(title, window_x, window_y, width, height, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
+#else
+    // A Wayland client cannot place its window: the saved position is read and ignored.
+    (void)window_x;
+    (void)window_y;
+
+    _host = std::make_unique<host::QtHost>(&_logger, *this);
+    if (!_host->create(title, width, height))
+    {
+      _logger.error(TAG "Could not create the Qt host window");
+      goto error;
+    }
+#endif
   }
 
+#ifdef _WIN32
   if (_window == NULL)
   {
     _logger.error(TAG "SDL_CreateWindow: %s", SDL_GetError());
@@ -248,6 +275,10 @@ bool Application::init(const char* title, int width, int height)
     if (_config.getBackgroundInput())
       setBackgroundInput(true);
   }
+#else
+  if (_config.getBackgroundInput())
+    setBackgroundInput(true);
+#endif
 
   inited = kWindowInited;
 
@@ -306,7 +337,13 @@ bool Application::init(const char* title, int width, int height)
 
   inited = kInputInited;
 
+#ifdef _WIN32
   if (!_videoContext.init(&_logger, _window))
+#else
+  _videoContext = std::make_unique<host::QtVideoContext>();
+  _components.videoContext = _videoContext.get(); // what Core::init hands the core at loadCore
+  if (!_videoContext->init(&_logger, *_host))
+#endif
   {
     goto error;
   }
@@ -323,7 +360,11 @@ bool Application::init(const char* title, int width, int height)
 
   inited = kGlInited;
 
+#ifdef _WIN32
   if (!_video.init(&_logger, &_videoContext, &_config))
+#else
+  if (!_video.init(&_logger, _videoContext.get(), &_config))
+#endif
   {
     goto error;
   }
@@ -335,11 +376,18 @@ bool Application::init(const char* title, int width, int height)
     // created with. Without this the video component never learns the size
     // and lays out every frame against a 0x0 window.
     int windowWidth, windowHeight;
+#ifdef _WIN32
     SDL_GetWindowSize(_window, &windowWidth, &windowHeight);
+#else
+    _host->contentSize(&windowWidth, &windowHeight); // device pixels, as every size Video sees
+#endif
     _video.windowResized(windowWidth, windowHeight);
   }
 
   inited = kVideoInited;
+#ifndef _WIN32
+  _videoReady = true; // from here onResized may reach _video
+#endif
 
   {
     _cdRomMenu = GetSubMenu(GetSubMenu(_menu, 0), CDROM_MENU_INDEX);
@@ -377,17 +425,28 @@ bool Application::init(const char* title, int width, int height)
   return true;
 
 error:
+#ifndef _WIN32
+  _videoReady = false;
+#endif
   switch (inited)
   {
   case kVideoInited:        _video.destroy();
   case kGlInited:           // nothing to undo
+#ifdef _WIN32
   case kVideoContextInited: _videoContext.destroy();
+#else
+  case kVideoContextInited: _videoContext.reset();
+#endif
   case kInputInited:        _input.destroy();
   case kAudioInited:        _audio.destroy();
   case kFifoInited:         _fifo.destroy();
   case kAudioDeviceInited:  _microphone.destroy();
                             SDL_CloseAudioDevice(_audioDev);
+#ifdef _WIN32
   case kWindowInited:       SDL_DestroyWindow(_window);
+#else
+  case kWindowInited:       _host.reset();
+#endif
   case kKeyBindsInited:     _keybinds.destroy();
   case kSdlInited:          SDL_Quit();
   case kAllocatorInited:    _allocator.destroy();
@@ -402,17 +461,26 @@ error:
 
 void Application::processEvents()
 {
+#ifndef _WIN32
+  {
+    // Qt first: window, keyboard and mouse events, the menu bar, and the
+    // toolkit's posted work. A dialog opened by a handler blocks here, as a
+    // Windows dialog blocks inside WM_COMMAND: with the flag set the audio
+    // callback plays silence instead of counting the drained buffer as faults
+    // (which would pause a hardcore game from the audio thread).
+    const bool wasProcessing = _processingEvents;
+    _processingEvents = true;
+    _host->pump();
+    _processingEvents = wasProcessing;
+  }
+#endif
+
   SDL_Event event;
   if (!SDL_PollEvent(&event))
     return;
 
   do
   {
-#ifndef _WIN32
-    if (RA_HandleHostWorkEvent(&event))
-      continue;
-#endif
-
     switch (event.type)
     {
       case SDL_QUIT:
@@ -552,6 +620,9 @@ void Application::runSmoothed()
       // do five frames without audio
       runTurbo();
       numFrames += 5;
+#ifndef _WIN32
+      _framesRun += 5;
+#endif
     }
     else
     {
@@ -561,6 +632,9 @@ void Application::runSmoothed()
 
       _audioGeneratedDuringFastForward = 0;
       ++numFrames;
+#ifndef _WIN32
+      ++_framesRun;
+#endif
     }
 
     if (numFrames > 50)
@@ -648,6 +722,9 @@ void Application::run()
           // do one frame without audio
           _core.step(true, false);
           RA_DoAchievementsFrame();
+#ifndef _WIN32
+          ++_framesRun;
+#endif
 
           // set state to GamePaused
           _fsm.resumeGame();
@@ -699,8 +776,12 @@ void Application::saveConfiguration()
   json += _states.serializeSettings();
 
   // window position
+#ifdef _WIN32
   const Uint32 flags = SDL_GetWindowFlags(_window);
   if (flags & SDL_WINDOW_FULLSCREEN_DESKTOP)
+#else
+  if (_host->isFullscreen())
+#endif
   {
     // it doesn't make sense to save fullscreen mode as the player must load a game when they restart
     // the application, and the window position/size will be 0,0 and the desktop resolution
@@ -710,10 +791,17 @@ void Application::saveConfiguration()
     json += ",\"window\":{";
 
     int x, y;
+#ifdef _WIN32
     SDL_GetWindowPosition(_window, &x, &y);
     json += "\"x\":" + std::to_string(x) + ",\"y\":" + std::to_string(y);
 
     SDL_GetWindowSize(_window, &x, &y);
+#else
+    // a Wayland client can neither read nor set its window's position; the
+    // size is the render area's, which is what create() sizes next time
+    json += "\"x\":0,\"y\":0";
+    _host->contentSize(&x, &y);
+#endif
     switch (_video.getRotation())
     {
       case Video::Rotation::Ninety:
@@ -755,6 +843,9 @@ void Application::destroy()
   if (_gameData)
     free(_gameData);
 
+#ifndef _WIN32
+  _videoReady = false;
+#endif
   _video.destroy();
   _keybinds.destroy();
   _input.destroy();
@@ -764,11 +855,19 @@ void Application::destroy()
   _fifo.destroy();
 
   SDL_CloseAudioDevice(_audioDev);
+#ifdef _WIN32
   SDL_DestroyWindow(_window);
+#else
+  _videoContext.reset(); // the contexts; _video.destroy() above released what they held
+  _host.reset();         // the window; posted work is dropped from here on
+#endif
   SDL_Quit();
 
   _allocator.destroy();
 
+#ifndef _WIN32
+  _logger.info(TAG "ran %u frames", _framesRun);
+#endif
   _logger.info(TAG "shutdown complete");
   _logger.destroy();
 }
@@ -1472,7 +1571,11 @@ bool Application::isPaused() const
 
 void Application::onRotationChanged(Video::Rotation oldRotation, Video::Rotation newRotation)
 {
+#ifdef _WIN32
   const Uint32 fullscreen = SDL_GetWindowFlags(_window) & SDL_WINDOW_FULLSCREEN_DESKTOP;
+#else
+  const bool fullscreen = _host->isFullscreen();
+#endif
 
   if (!fullscreen)
   {
@@ -2008,7 +2111,11 @@ void Application::screenshot()
 
 void Application::aboutDialog()
 {
+#ifdef _WIN32
   ::aboutDialog(_logger.contents().c_str());
+#else
+  host::aboutDialog(_logger.contents().c_str()); // About.cpp's Win32 dialog template has no Linux body
+#endif
 }
 
 static void buildSystemMenu(HMENU parentMenu, int system, std::string systemName)
@@ -2289,7 +2396,11 @@ std::string Application::serializeRecentList()
 
 void Application::resizeWindow(unsigned multiplier)
 {
+#ifdef _WIN32
   Uint32 fullscreen = SDL_GetWindowFlags(_window) & SDL_WINDOW_FULLSCREEN_DESKTOP;
+#else
+  const bool fullscreen = _host->isFullscreen();
+#endif
   
   if (!fullscreen)
   {
@@ -2314,6 +2425,7 @@ void Application::resizeWindow(unsigned multiplier)
 
 void Application::resizeWindow(int width, int height)
 {
+#ifdef _WIN32
   int actual_width, actual_height;
   SDL_SetWindowSize(_window, width, height);
 
@@ -2326,10 +2438,14 @@ void Application::resizeWindow(int width, int height)
     height += (height - actual_height);
     SDL_SetWindowSize(_window, width, height);
   }
+#else
+  _host->resizeContent(width, height); // the render area; the window grows by the menu bar
+#endif
 }
 
 void Application::toggleFullscreen()
 {
+#ifdef _WIN32
   Uint32 fullscreen = SDL_GetWindowFlags(_window) & SDL_WINDOW_FULLSCREEN_DESKTOP;
   if (fullscreen)
   {
@@ -2344,6 +2460,11 @@ void Application::toggleFullscreen()
     SetMenu(g_mainWindow, NULL);
     SDL_ShowCursor(SDL_DISABLE);
   }
+#else
+  // The host hides the menu bar and the cursor while fullscreen, as SetMenu(NULL)
+  // and SDL_ShowCursor do above.
+  _host->setFullscreen(!_host->isFullscreen());
+#endif
 }
 
 void Application::handle(const SDL_SysWMEvent* syswm)
@@ -2774,7 +2895,17 @@ void Application::handle(const KeyBinds::Action action, unsigned extra)
 
 void Application::updateMouseCapture()
 {
+#ifdef _WIN32
   SDL_SetRelativeMouseMode(_keybinds.hasGameFocus() && _config.getGameFocusCaptureMouse() ? SDL_TRUE : SDL_FALSE);
+#else
+  // Qt 6 has no pointer lock: game-focus mouse capture is unavailable on Linux.
+  static bool warned = false;
+  if (_keybinds.hasGameFocus() && _config.getGameFocusCaptureMouse() && !warned)
+  {
+    _logger.warn(TAG "Mouse capture is not available on Linux (Qt has no pointer lock)");
+    warned = true;
+  }
+#endif
 }
 
 // A stopgap until native builds have a RetroAchievements menu. RA_Interface.h
@@ -2976,3 +3107,71 @@ bool Application::handleArgs(int argc, char* argv[])
 
   return _fsm.loadGame(game);
 }
+
+#ifndef _WIN32
+// ---- host::IHostEvents: the Qt window's events, as the SDL events the handlers above already take
+
+void Application::onKey(SDL_Keycode sym, Uint16 mod, bool pressed, bool repeat)
+{
+  SDL_KeyboardEvent key;
+  memset(&key, 0, sizeof(key));
+  key.type = pressed ? SDL_KEYDOWN : SDL_KEYUP;
+  key.state = pressed ? SDL_PRESSED : SDL_RELEASED;
+  key.repeat = repeat ? 1 : 0;
+  key.keysym.sym = sym;
+  key.keysym.mod = mod;
+
+  unsigned extra;
+  const KeyBinds::Action action = _keybinds.translate(&key, &extra);
+  handle(action, extra);
+}
+
+void Application::onMouseMove(int x, int y)
+{
+  SDL_MouseMotionEvent motion;
+  memset(&motion, 0, sizeof(motion));
+  motion.type = SDL_MOUSEMOTION;
+  motion.x = x;
+  motion.y = y;
+  handle(&motion);
+}
+
+void Application::onMouseButton(host::MouseButton button, bool pressed)
+{
+  SDL_MouseButtonEvent event;
+  memset(&event, 0, sizeof(event));
+  event.type = pressed ? SDL_MOUSEBUTTONDOWN : SDL_MOUSEBUTTONUP;
+  event.state = pressed ? SDL_PRESSED : SDL_RELEASED;
+  switch (button)
+  {
+    case host::MouseButton::Left:   event.button = SDL_BUTTON_LEFT; break;
+    case host::MouseButton::Middle: event.button = SDL_BUTTON_MIDDLE; break;
+    case host::MouseButton::Right:  event.button = SDL_BUTTON_RIGHT; break;
+  }
+  handle(&event);
+}
+
+void Application::onResized(int width, int height)
+{
+  // init() seeds the size once _video is up, so a resize before that loses nothing
+  if (_videoReady)
+    _video.windowResized(width, height);
+}
+
+void Application::onCloseRequested()
+{
+  _fsm.quit(); // the FSM asks RA about unsaved changes; the window stays until the loop ends
+}
+
+void Application::onMenuCommand(size_t sourceIndex, int id)
+{
+  // the menu bar is built in Task 7; until then nothing can call this
+  (void)sourceIndex;
+  (void)id;
+}
+
+void Application::onAbout()
+{
+  aboutDialog();
+}
+#endif
