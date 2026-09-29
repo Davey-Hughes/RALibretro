@@ -203,6 +203,8 @@ add_library(ralibretro_dialog_callsites STATIC
 target_include_directories(ralibretro_dialog_callsites PRIVATE ${APP_INCLUDE_DIRS} ${SDL2_INCLUDE_DIRS} tests/dialoglayout)
 target_compile_definitions(ralibretro_dialog_callsites PRIVATE ${APP_DEFINITIONS})
 target_compile_options(ralibretro_dialog_callsites PRIVATE ${APP_COMPILE_OPTIONS})
+# The fakes are new code: the menu code's warnings, as DialogNative.cpp has.
+set_source_files_properties(tests/dialoglayout/CallSites.cpp PROPERTIES COMPILE_OPTIONS "${MENU_WARNINGS}")
 
 add_executable(ralibretro_dialog_layout_tests
   tests/dialoglayout/main.cpp
