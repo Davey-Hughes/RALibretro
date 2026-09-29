@@ -991,6 +991,8 @@ void Config::showDialog(const std::string& coreName, Input& input)
   }
 }
 
+#endif
+
 static const char* s_getFastForwardRatioOptions(int index, void* udata)
 {
   switch (index)
@@ -1046,7 +1048,6 @@ void Config::showEmulatorSettingsDialog()
     _gameFocusCaptureMouse = gameFocusCaptureMouse;
   }
 }
-#endif
 
 const char* Config::s_getOption(int index, void* udata)
 {

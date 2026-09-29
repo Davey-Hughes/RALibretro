@@ -1,7 +1,7 @@
 /* Native replacements for RALibretro's Win32-only UI entry points.
  *
  * These keep the frontend runnable on Linux while the real dialogs are still
- * Win32: the file pickers are Qt's, and the settings and cores dialogs report
+ * Win32: the file pickers are Qt's, and the core options and cores dialogs report
  * "not available" instead of opening a window. Replacing them is part of the
  * Qt port. */
 
@@ -25,11 +25,6 @@ std::string util::saveFileDialog(HWND, const std::string& extensionsFilter, cons
 void Config::showDialog(const std::string&, Input&)
 {
   host::messageBox("The core settings dialog is not available in the native build yet.", "Not implemented", 0);
-}
-
-void Config::showEmulatorSettingsDialog()
-{
-  host::messageBox("The emulator settings dialog is not available in the native build yet.", "Not implemented", 0);
 }
 
 bool showCoresDialog(Config*, Logger*, const std::string&, int)
