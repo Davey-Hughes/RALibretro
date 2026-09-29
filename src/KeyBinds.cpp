@@ -204,10 +204,6 @@ enum
   // Game Focus
   kGameFocusToggle,
 
-  // RetroAchievements
-  kRichPresenceMonitor,
-  kOverlaySettings,
-
   kMaxBindings
 };
 
@@ -249,10 +245,7 @@ static const char* bindingNames[] = {
 
   "RESET",
 
-  "GAME_FOCUS_TOGGLE",
-
-  "RICH_PRESENCE_MONITOR",
-  "OVERLAY_SETTINGS"
+  "GAME_FOCUS_TOGGLE"
 };
 static_assert(sizeof(bindingNames) / sizeof(bindingNames[0]) == kMaxBindings, "bindingNames does not contain an appropriate number of elements");
 
@@ -381,9 +374,6 @@ bool KeyBinds::init(Logger* logger, Config *config)
   _bindings[kScreenshot] = { 0, SDLK_PRINTSCREEN, Binding::Type::Key, 0 };
 
   _bindings[kGameFocusToggle] = { 0, SDLK_SCROLLLOCK, Binding::Type::Key, 0 };
-
-  _bindings[kRichPresenceMonitor] = { 0, SDLK_p, Binding::Type::Key, KMOD_CTRL };
-  _bindings[kOverlaySettings] = { 0, SDLK_o, Binding::Type::Key, KMOD_CTRL };
 
    // TODO: load persisted
 
@@ -585,10 +575,6 @@ KeyBinds::Action KeyBinds::translateButtonPress(int button, unsigned* extra)
 
     // Game Focus
     case kGameFocusToggle:   _gameFocus = !_gameFocus; return Action::kGameFocusToggle;
-
-    // RetroAchievements
-    case kRichPresenceMonitor: return Action::kRichPresenceMonitor;
-    case kOverlaySettings: return Action::kOverlaySettings;
 
     default:                 return Action::kNothing;
   }

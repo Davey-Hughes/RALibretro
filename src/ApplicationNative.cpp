@@ -10,6 +10,17 @@
 #include "host/qt/QtHost.h"
 #include "host/qt/QtVideoContext.h"
 
+#include "menu/HostMenu.h"
+#include "menu/RAMenuSource.h"
+
+#include "resource.h"
+#include "Emulator.h"
+#include "Util.h"
+
+#include <RA_Interface.h>
+
+#include <map>
+#include <set>
 #include <string.h>
 
 // ---- host::IHostEvents: the Qt window's events, as the SDL events the handlers in Application.cpp already take
@@ -74,14 +85,89 @@ void Application::onCloseRequested()
 
 void Application::onMenuCommand(size_t sourceIndex, int id)
 {
-  // the menu bar is built in Task 7; until then nothing can call this
-  (void)sourceIndex;
-  (void)id;
+  if (sourceIndex < _menuSources.size())
+    _menuSources[sourceIndex]->activate(id);
 }
 
 void Application::onAbout()
 {
-  aboutDialog();
+  handleCommand(IDM_ABOUT);
+}
+
+// ---- the menu bar: a snapshot of Application's state, and the sources it is built from
+
+menu::HostMenuState Application::hostMenuState()
+{
+  menu::HostMenuState state;
+  state.state = _fsm.currentState();
+  state.hardcore = RA_HardcoreModeIsActive() != 0;
+  state.validSlots = _validSlots;
+
+  for (const auto& recent : _recentList)
+  {
+    // as enableRecent captions them
+    std::string caption = util::fileName(recent.path);
+    caption += " (";
+    caption += getEmulatorName(recent.coreName, recent.system);
+    caption += " - ";
+    caption += getSystemName(recent.system);
+    caption += ")";
+    state.recent.push_back(caption);
+  }
+
+  state.numDiscs = _core.getNumDiscs();
+  state.currentDisc = _core.getCurrentDiscIndex();
+  state.trayOpen = _core.getTrayOpen();
+  state.floppy = _isDriveFloppy;
+  for (unsigned i = 0; i < state.numDiscs; ++i)
+    state.discLabels.push_back(getDiscLabel(i));
+
+  // as buildSystemsMenu / buildSystemMenu list them: std::map sorts by name
+  std::set<int> availableSystems;
+  getAvailableSystems(availableSystems);
+  std::map<std::string, int> systemMap;
+  for (int system : availableSystems)
+  {
+    std::set<std::string> systemCores;
+    getAvailableSystemCores(system, systemCores);
+    if (!systemCores.empty())
+      systemMap.emplace(getSystemName(system), system);
+  }
+  for (const auto& pair : systemMap)
+  {
+    menu::HostMenuState::System entry;
+    entry.name = pair.first;
+    entry.manufacturer = getSystemManufacturer(pair.second);
+    std::set<std::string> systemCores;
+    getAvailableSystemCores(pair.second, systemCores);
+    std::map<std::string, int> cores;
+    for (const auto& core : systemCores)
+      cores.emplace(getEmulatorName(core, pair.second), encodeCoreName(core, pair.second));
+    for (const auto& core : cores)
+      entry.cores.push_back({core.first, core.second});
+    state.systems.push_back(std::move(entry));
+  }
+
+  state.backgroundInput = _config.getBackgroundInput();
+  return state;
+}
+
+void Application::createMenuBar()
+{
+  _fileMenu = std::make_unique<menu::HostMenuSource>(
+    menu::buildFileMenu, [this]() { return hostMenuState(); }, [this](int id) { handleCommand(id); });
+  _settingsMenu = std::make_unique<menu::HostMenuSource>(
+    menu::buildSettingsMenu, [this]() { return hostMenuState(); }, [this](int id) { handleCommand(id); });
+  _raMenu = std::make_unique<menu::RAMenuSource>(RA_GetPopupMenuItems, RA_InvokeDialog);
+
+  _menuSources = {_fileMenu.get(), _settingsMenu.get(), _raMenu.get()};
+  _host->buildMenuBar(_menuSources, 2); // File, Settings, About, RetroAchievements: Windows appends RA after About
+}
+
+void Application::markRAMenuDirty()
+{
+  if (_raMenu)
+    _raMenu->markDirty();
 }
 
 // ---- work posted to the main thread

@@ -29,6 +29,9 @@ void pauseEmulator();
 void resumeEmulator();
 void reset();
 void loadROM(const char* path);
+#ifndef _WIN32
+void rebuildRAMenu();
+#endif
 
 
 #ifdef _WIN32
@@ -91,8 +94,9 @@ void RebuildMenu()
   InvalidateRect(g_mainWindow, NULL, TRUE);
   DrawMenuBar(g_mainWindow);
 #endif
-  // there is no menu bar off Windows; RA_GetPopupMenuItems is how a native
-  // menu would be built
+#ifndef _WIN32
+  rebuildRAMenu();
+#endif
 }
 
 

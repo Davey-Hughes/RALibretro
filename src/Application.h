@@ -45,6 +45,8 @@ along with RALibretro.  If not, see <http://www.gnu.org/licenses/>.
 #include <memory>
 
 #include "host/IHostEvents.h"
+#include "menu/HostMenu.h"
+#include "menu/RAMenuSource.h"
 
 namespace host
 {
@@ -90,6 +92,10 @@ public:
   void onRotationChanged(Video::Rotation oldRotation, Video::Rotation newRotation);
 
   void refreshMemoryMap();
+
+#ifndef _WIN32
+  void markRAMenuDirty(); // RebuildMenu: the RetroAchievements menu re-reads its items when next opened
+#endif
 
   Config& config() { return _config; }
 
@@ -146,12 +152,14 @@ protected:
   void        onCloseRequested() override;
   void        onMenuCommand(size_t sourceIndex, int id) override;
   void        onAbout() override;
+
+  menu::HostMenuState hostMenuState(); // what File and Settings show right now (non-const: Config's getters are not)
+  void        createMenuBar();
 #endif
   void        handle(const SDL_WindowEvent* window);
   void        handle(const SDL_MouseMotionEvent* motion);
   void        handle(const SDL_MouseButtonEvent* button);
   void        handle(const KeyBinds::Action action, unsigned extra);
-  void        openRADialog(const wchar_t* label);
   void        buildSystemsMenu();
   void        loadConfiguration(int* window_x, int* window_y, int* window_width, int* window_height);
   void        saveConfiguration();
@@ -181,6 +189,12 @@ protected:
   // true between _video.init and _video.destroy: Qt delivers resizes from inside
   // QtHost::create() and any modal, before _video exists and while it goes away
   bool              _videoReady = false;
+#endif
+#ifndef _WIN32
+  std::unique_ptr<menu::HostMenuSource> _fileMenu;
+  std::unique_ptr<menu::HostMenuSource> _settingsMenu;
+  std::unique_ptr<menu::RAMenuSource>   _raMenu;
+  std::vector<menu::IMenuSource*>       _menuSources; // bar order; onMenuCommand's index
 #endif
   SDL_AudioSpec     _audioSpec;
   SDL_AudioDeviceID _audioDev;

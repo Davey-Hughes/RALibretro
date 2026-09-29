@@ -401,6 +401,10 @@ bool Application::init(const char* title, int width, int height)
 
     buildSystemsMenu();
 
+#ifndef _WIN32
+    createMenuBar(); // before RA_Init, whose RebuildMenu marks the RetroAchievements menu dirty
+#endif
+
     extern void RA_Init(HWND hwnd);
     RA_Init(g_mainWindow);
   }
@@ -880,6 +884,10 @@ void Application::destroy()
 #else
   _videoContext.reset(); // the contexts; _video.destroy() above released what they held
   _components.videoContext = NULL;
+  _menuSources.clear();  // the bar's lambdas hold source references; the window goes after them
+  _raMenu.reset();
+  _settingsMenu.reset();
+  _fileMenu.reset();
   _host.reset();         // the window; posted work is dropped from here on
 #endif
   SDL_Quit();
@@ -2908,14 +2916,6 @@ void Application::handle(const KeyBinds::Action action, unsigned extra)
     _video.showMessage(_keybinds.hasGameFocus() ? "Game focus enabled" : "Game focus disabled", 60);
     updateMouseCapture();
     break;
-
-  case KeyBinds::Action::kRichPresenceMonitor:
-    openRADialog(L"Rich Presence Monitor");
-    break;
-
-  case KeyBinds::Action::kOverlaySettings:
-    openRADialog(L"Overlay Settings");
-    break;
   }
 }
 
@@ -2932,39 +2932,6 @@ void Application::updateMouseCapture()
     warned = true;
   }
 #endif
-}
-
-// A stopgap until native builds have a RetroAchievements menu. RA_Interface.h
-// keeps the menu IDs private, so an item is found by its label (accelerator
-// markers removed), through the same API a native menu would be built from.
-void Application::openRADialog(const wchar_t* label)
-{
-  RA_MenuItem items[64];
-  const int count = RA_GetPopupMenuItems(items);
-
-  for (int i = 0; i < count; i++)
-  {
-    if (items[i].sLabel == NULL) // a separator
-      continue;
-
-    std::wstring itemLabel;
-    for (const wchar_t* c = items[i].sLabel; *c; c++)
-    {
-      if (*c != L'&') // the accelerator marker
-        itemLabel.push_back(*c);
-    }
-
-    if (itemLabel == label)
-    {
-      RA_InvokeDialog(items[i].nID);
-      return;
-    }
-  }
-
-  std::string narrow;
-  for (const wchar_t* c = label; *c; c++)
-    narrow.push_back(static_cast<char>(*c)); // the labels are ASCII
-  _logger.warn(TAG "%s not found in the RetroAchievements menu", narrow.c_str());
 }
 
 void Application::toggleFastForwarding(unsigned extra)

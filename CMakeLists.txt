@@ -71,6 +71,8 @@ set(SOURCES_CXX
   src/KeyBinds.cpp
   src/main.cpp
   src/Memory.cpp
+  src/menu/HostMenu.cpp
+  src/menu/RAMenuSource.cpp
   src/States.cpp
   src/Util.cpp
 )

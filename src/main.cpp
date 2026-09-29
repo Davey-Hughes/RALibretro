@@ -69,6 +69,13 @@ void loadROM(const char* path)
   app.loadGame(path);
 }
 
+#ifndef _WIN32
+void rebuildRAMenu()
+{
+  app.markRAMenuDirty();
+}
+#endif
+
 extern "C" void abort_handler(int signal_number)
 {
   app.logger().error("[APP] abort() called");
