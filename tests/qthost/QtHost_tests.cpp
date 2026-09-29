@@ -19,6 +19,7 @@
 #include <QMainWindow>
 #include <QMessageBox>
 #include <QOpenGLContext>
+#include <QOpenGLFunctions>
 #include <QSurfaceFormat>
 #include <QTimer>
 #include <QToolButton>
@@ -686,6 +687,106 @@ TEST(QtHost_VideoContextSharesAndSwaps)
 
   ctx.destroy();
   CHECK(QOpenGLContext::currentContext() == nullptr);
+}
+
+TEST(QtHost_AsksForTheContextSdlAsksFor)
+{
+  // Video draws a software core's frame with no vertex array object bound: an
+  // OpenGL core profile refuses that and the game is blank. Below 3.2 a driver
+  // ignores the profile and answers with a compatibility context, which is
+  // what SDL's request (the core profile at SDL's default 2.1) comes to.
+  const QSurfaceFormat format = QSurfaceFormat::defaultFormat();
+  CHECK(format.profile() != QSurfaceFormat::CoreProfile);
+  CHECK_EQ(2, format.majorVersion());
+  CHECK_EQ(1, format.minorVersion());
+  // a window whose format has alpha is a translucent one to Qt
+  CHECK(!format.hasAlpha());
+}
+
+TEST(QtHost_APresentedFrameIsOpaque)
+{
+  // Offscreen gives a window alpha only when asked (Wayland gives it unasked),
+  // so for this test the window asks.
+  struct DefaultFormat
+  {
+    DefaultFormat() : saved(QSurfaceFormat::defaultFormat())
+    {
+      QSurfaceFormat withAlpha = saved;
+      withAlpha.setAlphaBufferSize(8);
+      QSurfaceFormat::setDefaultFormat(withAlpha);
+    }
+    ~DefaultFormat() { QSurfaceFormat::setDefaultFormat(saved); }
+    QSurfaceFormat saved;
+  } defaultFormat;
+
+  TestLogger logger;
+  Events events;
+  host::QtHost host(&logger, events);
+  CHECK(host.create("test", 64, 64));
+  {
+    QOpenGLContext probe;
+    if (!probe.create())
+    {
+      std::printf("SKIP QtHost_APresentedFrameIsOpaque: no OpenGL context can be made on the %s platform here "
+                  "(offscreen borrows GLX from DISPLAY, which is %s)\n",
+                  QGuiApplication::platformName().toUtf8().constData(),
+                  std::getenv("DISPLAY") != nullptr ? "set" : "unset");
+      return;
+    }
+  }
+
+  host::QtVideoContext ctx;
+  CHECK(ctx.init(&logger, host));
+  ctx.enableCoreContext(false);
+  QOpenGLContext* ra = QOpenGLContext::currentContext();
+  CHECK(ra != nullptr);
+  if (ra == nullptr)
+    return;
+  QOpenGLFunctions* gl = ra->functions();
+
+  GLint alphaBits = 0;
+  gl->glGetIntegerv(GL_ALPHA_BITS, &alphaBits);
+  if (alphaBits == 0)
+  {
+    std::printf("SKIP QtHost_APresentedFrameIsOpaque: the %s platform's window has no alpha here even when "
+                "asked, so there is nothing to make opaque\n",
+                QGuiApplication::platformName().toUtf8().constData());
+    return;
+  }
+
+  // a frame as a core's RGBX picture leaves it: colour, and alpha 0
+  gl->glClearColor(1.0f, 0.5f, 0.0f, 0.0f);
+  gl->glClear(GL_COLOR_BUFFER_BIT);
+  // state the present must leave as it finds it
+  gl->glScissor(0, 0, 1, 1);
+  gl->glEnable(GL_SCISSOR_TEST);
+  gl->glColorMask(GL_TRUE, GL_FALSE, GL_TRUE, GL_TRUE);
+
+  ctx.makeOpaque();
+
+  GLboolean mask[4] = {GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE};
+  GLfloat colour[4] = {-1.0f, -1.0f, -1.0f, -1.0f};
+  gl->glGetBooleanv(GL_COLOR_WRITEMASK, mask);
+  gl->glGetFloatv(GL_COLOR_CLEAR_VALUE, colour);
+  CHECK(gl->glIsEnabled(GL_SCISSOR_TEST) == GL_TRUE);
+  CHECK(mask[0] == GL_TRUE);
+  CHECK(mask[1] == GL_FALSE);
+  CHECK(mask[2] == GL_TRUE);
+  CHECK(mask[3] == GL_TRUE);
+  CHECK(colour[0] == 1.0f);
+  CHECK(colour[1] == 0.5f);
+  CHECK(colour[2] == 0.0f);
+  CHECK(colour[3] == 0.0f);
+
+  // the frame as the present will show it, away from the scissor box
+  unsigned char pixel[4] = {0, 0, 0, 0};
+  gl->glReadPixels(32, 32, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixel);
+  CHECK_EQ(255, static_cast<int>(pixel[3])); // opaque
+  CHECK_EQ(255, static_cast<int>(pixel[0])); // and the picture as it was
+  CHECK(pixel[1] >= 127 && pixel[1] <= 128);
+  CHECK_EQ(0, static_cast<int>(pixel[2]));
+
+  ctx.destroy();
 }
 
 TEST(QtHost_Win32FilterBecomesAQtFilter)

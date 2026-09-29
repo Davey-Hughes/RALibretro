@@ -87,15 +87,27 @@ host::QtApplicationScope::QtApplicationScope(int& argc, char** argv)
   // Fixed before the application exists: every window created later gets it.
   // Not the swap interval: that depends on the platform, known only once the
   // application exists, and QtHost::create sets it on the render window.
+  //
+  // OpenGL 2.1 and no profile is what the SDL window asks for: Application's
+  // SDL_GL_CONTEXT_PROFILE_CORE comes with SDL's default version, 2.1, and a
+  // driver ignores the profile below 3.2. The driver answers with its newest
+  // compatibility context. It must not be a core profile: for a core that
+  // renders in software Video draws with no vertex array object bound, which a
+  // core profile refuses (INVALID_OPERATION), and Gl stops drawing at the first
+  // error - a blank game.
+  //
+  // No alpha, where SDL asks for 8 bits: Qt takes a window whose format has
+  // alpha for a translucent one. Asking is not enough on Wayland, where Qt
+  // gives every OpenGL window alpha: QtVideoContext makes each frame opaque.
   QSurfaceFormat format;
   format.setRenderableType(QSurfaceFormat::OpenGL);
-  format.setProfile(QSurfaceFormat::CoreProfile);
-  format.setVersion(3, 3);
+  format.setProfile(QSurfaceFormat::NoProfile);
+  format.setVersion(2, 1);
   format.setSwapBehavior(QSurfaceFormat::DoubleBuffer);
   format.setRedBufferSize(8);
   format.setGreenBufferSize(8);
   format.setBlueBufferSize(8);
-  format.setAlphaBufferSize(8);
+  format.setAlphaBufferSize(0);
   QSurfaceFormat::setDefaultFormat(format);
 
   QCoreApplication::setApplicationName(QStringLiteral("RALibretro"));

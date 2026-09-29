@@ -57,8 +57,13 @@ bool host::QtVideoContext::init(libretro::LoggerComponent* logger, QtHost& host)
 
   // what the driver gave, not what was asked for: format() echoes the request on some platforms
   const char* version = reinterpret_cast<const char*>(_raContext->functions()->glGetString(GL_VERSION));
-  _logger->info(TAG "OpenGL %s, contexts share: %d", version != nullptr ? version : "(unknown)",
-                QOpenGLContext::areSharing(_raContext, _coreContext) ? 1 : 0);
+  GLint alphaBits = 0;
+  _raContext->functions()->glGetIntegerv(GL_ALPHA_BITS, &alphaBits);
+  _hasAlpha = alphaBits > 0;
+  _logger->info(TAG "OpenGL %s, contexts share: %d, alpha bits: %d (asked for %d)",
+                version != nullptr ? version : "(unknown)",
+                QOpenGLContext::areSharing(_raContext, _coreContext) ? 1 : 0, static_cast<int>(alphaBits),
+                _surface->requestedFormat().alphaBufferSize());
   _ready = true;
   return true;
 }
@@ -141,5 +146,41 @@ void host::QtVideoContext::swapBuffers()
     return;
   }
   _loggedUnexposed = false;
+  if (_hasAlpha)
+    makeOpaque();
   _raContext->swapBuffers(_surface);
+}
+
+void host::QtVideoContext::makeOpaque()
+{
+  // Either context may be current here (Video::clear swaps with the core's),
+  // and both draw into the one window.
+  QOpenGLContext* current = QOpenGLContext::currentContext();
+  if (current == nullptr || current->surface() != _surface)
+    return;
+
+  QOpenGLFunctions* gl = current->functions();
+  const GLuint window = current->defaultFramebufferObject();
+  GLboolean mask[4] = {GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE};
+  GLfloat colour[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  GLint bound = 0;
+  gl->glGetBooleanv(GL_COLOR_WRITEMASK, mask);
+  gl->glGetFloatv(GL_COLOR_CLEAR_VALUE, colour);
+  gl->glGetIntegerv(GL_FRAMEBUFFER_BINDING, &bound);
+  const bool scissor = gl->glIsEnabled(GL_SCISSOR_TEST) == GL_TRUE;
+
+  if (static_cast<GLuint>(bound) != window)
+    gl->glBindFramebuffer(GL_FRAMEBUFFER, window);
+  if (scissor)
+    gl->glDisable(GL_SCISSOR_TEST);
+  gl->glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_TRUE);
+  gl->glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+  gl->glClear(GL_COLOR_BUFFER_BIT); // alpha only: the picture stays
+
+  gl->glClearColor(colour[0], colour[1], colour[2], colour[3]);
+  gl->glColorMask(mask[0], mask[1], mask[2], mask[3]);
+  if (scissor)
+    gl->glEnable(GL_SCISSOR_TEST);
+  if (static_cast<GLuint>(bound) != window)
+    gl->glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(bound));
 }
