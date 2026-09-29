@@ -66,4 +66,9 @@ namespace host
 
   // A GL entry point from the current context (what SDL_GL_GetProcAddress did).
   void* getProcAddress(const char* symbol);
+
+  // Whether the live QtHost's window swaps with vsync: its swap interval
+  // (swapIntervalForPlatform), fixed when the window was made, is not 0. False
+  // when no host exists. Any thread.
+  bool vsyncEnabled();
 }

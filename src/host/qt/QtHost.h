@@ -26,6 +26,11 @@ namespace host
 {
   class IHostEvents;
 
+  // The swap interval for the Qt platform plugin named: 0 on Wayland (its
+  // compositor presents tear-free, so an unthrottled swap costs nothing and
+  // emulation paces by audio), 1 anywhere else. Fixed when the window is made.
+  int swapIntervalForPlatform(const std::string& platformName);
+
   class QtHost
   {
   public:

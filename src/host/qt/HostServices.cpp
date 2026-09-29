@@ -32,6 +32,7 @@ using host::detail::s_dialogParent;
 using host::detail::s_hostMutex;
 using host::detail::s_logger;
 using host::detail::s_postTarget;
+using host::detail::s_swapInterval;
 
 namespace
 {
@@ -84,12 +85,13 @@ host::QtApplicationScope::QtApplicationScope(int& argc, char** argv)
   }
 
   // Fixed before the application exists: every window created later gets it.
+  // Not the swap interval: that depends on the platform, known only once the
+  // application exists, and QtHost::create sets it on the render window.
   QSurfaceFormat format;
   format.setRenderableType(QSurfaceFormat::OpenGL);
   format.setProfile(QSurfaceFormat::CoreProfile);
   format.setVersion(3, 3);
   format.setSwapBehavior(QSurfaceFormat::DoubleBuffer);
-  format.setSwapInterval(1);
   format.setRedBufferSize(8);
   format.setGreenBufferSize(8);
   format.setBlueBufferSize(8);
@@ -293,4 +295,10 @@ void* host::getProcAddress(const char* symbol)
 {
   QOpenGLContext* context = QOpenGLContext::currentContext();
   return context != nullptr ? reinterpret_cast<void*>(context->getProcAddress(symbol)) : nullptr;
+}
+
+bool host::vsyncEnabled()
+{
+  std::lock_guard<std::mutex> lock(s_hostMutex);
+  return s_swapInterval != 0;
 }

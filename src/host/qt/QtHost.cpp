@@ -15,6 +15,7 @@
 #include <QCloseEvent>
 #include <QMainWindow>
 #include <QMenuBar>
+#include <QSurfaceFormat>
 #include <QWindow>
 
 #include <chrono>
@@ -26,6 +27,7 @@ using host::detail::s_dialogParent;
 using host::detail::s_hostMutex;
 using host::detail::s_logger;
 using host::detail::s_postTarget;
+using host::detail::s_swapInterval;
 
 namespace
 {
@@ -69,6 +71,11 @@ struct host::QtHost::Impl
   }
 };
 
+int host::swapIntervalForPlatform(const std::string& platformName)
+{
+  return platformName.rfind("wayland", 0) == 0 ? 0 : 1; // "wayland", "wayland-egl", ...
+}
+
 host::QtHost::QtHost(libretro::LoggerComponent* logger, IHostEvents& events)
   : _impl(std::make_unique<Impl>(logger, events))
 {
@@ -81,6 +88,7 @@ host::QtHost::~QtHost()
     s_postTarget = nullptr;
     s_dialogParent = nullptr;
     s_logger = nullptr;
+    s_swapInterval = 0;
   }
   if (_impl->keyRouter != nullptr && QApplication::instance() != nullptr)
     QApplication::instance()->removeEventFilter(_impl->keyRouter);
@@ -101,6 +109,20 @@ bool host::QtHost::create(const char* title, int width, int height)
   _impl->window = new MainWindow(_impl->events);
   _impl->window->setWindowTitle(QString::fromUtf8(title));
   _impl->gl = new GlWindow(_impl->events);
+
+  // Vsync, decided once: Qt fixes a window's swap interval when its platform
+  // window is made, and the platform is known only now the application exists.
+  // The render window asks for it before createWindowContainer and show() make
+  // that window; QtVideoContext's contexts take this same format from it.
+  const int swapInterval = swapIntervalForPlatform(QGuiApplication::platformName().toStdString());
+  QSurfaceFormat format = QSurfaceFormat::defaultFormat();
+  format.setSwapInterval(swapInterval);
+  _impl->gl->setFormat(format);
+  if (swapInterval == 0)
+    _impl->logger->info(TAG "vsync off: Wayland presents tear-free, emulation paces by audio");
+  else
+    _impl->logger->info(TAG "vsync on (swap interval %d)", swapInterval);
+
   _impl->container = QWidget::createWindowContainer(_impl->gl, _impl->window);
   _impl->container->setFocusPolicy(Qt::StrongFocus);
   _impl->window->setCentralWidget(_impl->container);
@@ -111,6 +133,7 @@ bool host::QtHost::create(const char* title, int width, int height)
     s_postTarget = _impl->postTarget;
     s_dialogParent = _impl->window;
     s_logger = _impl->logger;
+    s_swapInterval = swapInterval;
   }
 
   resizeContent(width, height);

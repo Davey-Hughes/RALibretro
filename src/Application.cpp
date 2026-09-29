@@ -391,7 +391,9 @@ bool Application::init(const char* title, int width, int height)
 
   {
     _cdRomMenu = GetSubMenu(GetSubMenu(_menu, 0), CDROM_MENU_INDEX);
+#ifdef _WIN32
     assert(GetMenuItemID(_cdRomMenu, 0) == IDM_CD_OPEN_TRAY);
+#endif
 
     if (!loadCores(&_config, &_logger))
     {
@@ -1654,18 +1656,25 @@ void Application::s_audioCallback(void* udata, Uint8* stream, int len)
         {
           // some cores don't generate audio when fast forwarding
         }
+#ifdef _WIN32
         else if (SDL_GL_GetSwapInterval() == 1)
         {
           // try turning off VSYNC to see if we can achieve the target framerate
           SDL_GL_SetSwapInterval(0);
           app->_vsyncDisabledByAudioFaults = true;
         }
+#endif
         else
         {
 #ifdef _WIN32
           app->pauseForBadPerformance();
 #else
-          // this is SDL's audio thread: the pause and its message box belong on the main thread
+          // No "turn vsync off first" step: the Qt host fixed the swap interval at
+          // start-up (host::vsyncEnabled). Off (Wayland), this is where Windows
+          // lands once vsync is off; on, it cannot be turned off, so the same
+          // thresholds pause at once. _vsyncDisabledByAudioFaults stays false.
+          // This is SDL's audio thread: the pause and its message box belong on
+          // the main thread.
           host::postToMainThread(&s_pauseForBadPerformance, app);
 #endif
         }
@@ -1681,6 +1690,7 @@ void Application::s_audioCallback(void* udata, Uint8* stream, int len)
         if (app->_config.getFastForwarding())
           ++app->_audioGeneratedDuringFastForward;
       }
+#ifdef _WIN32
       else if (app->_vsyncDisabledByAudioFaults)
       {
         if (++app->_numAudioRecoveries == 5)
@@ -1689,6 +1699,7 @@ void Application::s_audioCallback(void* udata, Uint8* stream, int len)
           app->_vsyncDisabledByAudioFaults = false;
         }
       }
+#endif
 
       app->_fifo.read((void*)stream, len);
 #ifdef DEBUG_AUDIO

@@ -16,8 +16,10 @@ host::QtVideoContext::~QtVideoContext()
 
 QOpenGLContext* host::QtVideoContext::createContext(QOpenGLContext* shareWith)
 {
+  // The render window's format, swap interval included (QtHost::create): Qt
+  // applies a context's own swap interval when it is made current on a window.
   auto* context = new QOpenGLContext();
-  context->setFormat(QSurfaceFormat::defaultFormat());
+  context->setFormat(_surface->requestedFormat());
   if (shareWith != nullptr)
     context->setShareContext(shareWith);
   if (!context->create())

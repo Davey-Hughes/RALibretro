@@ -76,8 +76,9 @@ set(SOURCES_CXX
 
 # --- the menu models --------------------------------------------------------------
 # File, Settings and RetroAchievements as plain data (no Qt, no GL, no RA
-# library), compiled once for the application and its tests. New menu code is
-# held to -Wall -Wextra, and gets no force-include: it needs no Win32 fakes.
+# library), as the application links them. New menu code is held to -Wall
+# -Wextra, and gets no force-include: it needs no Win32 fakes. The tests compile
+# the same two sources themselves, under the sanitizers (below).
 set(MENU_WARNINGS -Wall -Wextra)
 
 add_library(ralibretro_menu STATIC
@@ -158,19 +159,21 @@ set_source_files_properties(src/ApplicationNative.cpp PROPERTIES COMPILE_OPTIONS
 
 # --- native menu tests ---------------------------------------------------------
 # The menu's logic has unit tests of its own: RALibretro has no test framework.
-# The tests run under ASan and UBSan. The menu models come from ralibretro_menu,
-# built as the application links them, so those two sources are ASan-instrumented
-# only in an ASan build directory (CMAKE_CXX_FLAGS=-fsanitize=address).
+# The tests run under ASan and UBSan, so they compile the menu sources
+# themselves rather than link ralibretro_menu: two compilations of each, both
+# under -Wall -Wextra, the tested one under the sanitizers.
 add_executable(ralibretro_menu_tests
   tests/menu/main.cpp
   tests/menu/Runner.cpp
   tests/menu/RAMenuSource_tests.cpp
   tests/menu/QtKeyMap_tests.cpp
+  src/menu/RAMenuSource.cpp
   src/host/qt/QtKeyMap.cpp
   tests/menu/HostMenu_tests.cpp
+  src/menu/HostMenu.cpp
 )
 target_include_directories(ralibretro_menu_tests PRIVATE src src/RAInterface src/rcheevos/include ${SDL2_INCLUDE_DIRS})
-target_link_libraries(ralibretro_menu_tests PRIVATE ralibretro_menu Qt6::Core ${SDL2_LIBRARIES})
+target_link_libraries(ralibretro_menu_tests PRIVATE Qt6::Core ${SDL2_LIBRARIES})
 target_compile_options(ralibretro_menu_tests PRIVATE
   ${MENU_WARNINGS} -fsanitize=address,undefined -fno-omit-frame-pointer)
 target_link_options(ralibretro_menu_tests PRIVATE -fsanitize=address,undefined)

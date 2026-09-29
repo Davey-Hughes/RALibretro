@@ -19,6 +19,7 @@
 #include <QMainWindow>
 #include <QMessageBox>
 #include <QOpenGLContext>
+#include <QSurfaceFormat>
 #include <QTimer>
 #include <QToolButton>
 #include <QWidget>
@@ -557,6 +558,35 @@ TEST(QtHost_ResizeContentIgnoresAnEmptySize)
   CHECK_EQ(240, h);
 }
 
+TEST(QtHost_SwapIntervalFollowsThePlatform)
+{
+  // off on Wayland (its compositor presents tear-free; emulation paces by audio), on elsewhere
+  CHECK_EQ(0, host::swapIntervalForPlatform("wayland"));
+  CHECK_EQ(0, host::swapIntervalForPlatform("wayland-egl"));
+  CHECK_EQ(1, host::swapIntervalForPlatform("xcb"));
+  CHECK_EQ(1, host::swapIntervalForPlatform("offscreen"));
+  CHECK_EQ(1, host::swapIntervalForPlatform(""));
+}
+
+TEST(QtHost_VsyncIsFixedAtCreateAndEndsWithTheHost)
+{
+  CHECK(!host::vsyncEnabled()); // no host
+  {
+    TestLogger logger;
+    Events events;
+    host::QtHost host(&logger, events);
+    CHECK(host.create("test", 64, 64));
+    // offscreen: on, on the render window before its platform window existed
+    CHECK_EQ(1, host.glSurface()->requestedFormat().swapInterval());
+    CHECK(host::vsyncEnabled());
+    bool logged = false;
+    for (const auto& line : logger.lines)
+      logged = logged || line == "[QT] vsync on (swap interval 1)";
+    CHECK(logged);
+  }
+  CHECK(!host::vsyncEnabled());
+}
+
 TEST(QtHost_CloseButtonAsksAndDoesNotClose)
 {
   TestLogger logger;
@@ -592,6 +622,14 @@ TEST(QtHost_VideoContextSharesAndSwaps)
     }
   }
 
+  // The contexts take the render window's format, not the global default:
+  // a window asking for interval 0 gets contexts that ask for 0 (the platform
+  // window exists already, so this changes only what the window reports).
+  QSurfaceFormat windowFormat = host.glSurface()->requestedFormat();
+  windowFormat.setSwapInterval(0);
+  host.glSurface()->setFormat(windowFormat);
+  CHECK_EQ(1, QSurfaceFormat::defaultFormat().swapInterval());
+
   host::QtVideoContext ctx;
   CHECK(ctx.init(&logger, host));
   bool reported = false;
@@ -610,6 +648,8 @@ TEST(QtHost_VideoContextSharesAndSwaps)
     return; // areSharing dereferences both
   CHECK(core != ra);
   CHECK(QOpenGLContext::areSharing(ra, core));
+  CHECK_EQ(0, ra->format().swapInterval());
+  CHECK_EQ(0, core->format().swapInterval());
 
   // a reset replaces the core context with a new one, still sharing with RA's
   // (the old one's destruction is the proof it is new: its address may be reused)

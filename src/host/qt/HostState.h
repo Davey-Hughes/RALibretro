@@ -22,4 +22,5 @@ namespace host::detail
   inline QObject* s_postTarget = nullptr;               // postToMainThread's target
   inline QWidget* s_dialogParent = nullptr;             // the dialogs' parent
   inline libretro::LoggerComponent* s_logger = nullptr; // the host services' warnings
+  inline int s_swapInterval = 0;                        // the render window's; 0 with no host (vsyncEnabled)
 }

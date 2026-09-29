@@ -36,6 +36,10 @@ SOFTWARE.
 #include <io.h>
 #endif
 
+#ifndef _WIN32
+#include "host/HostServices.h" // vsyncEnabled: Qt-free
+#endif
+
 /* PPSSPP pushes 512 frames per packet, and relies on the mixer being called for every packet within
  * core.run() to throttle the framerate, so this value cannot exceed 1024 (512 frames * 2 channels).
  */
@@ -1578,6 +1582,18 @@ bool libretro::Core::handleSystemAVInfoChanged()
 
 void libretro::Core::resetVsync()
 {
+#ifndef _WIN32
+  // No SDL window off Windows: the Qt host fixed the swap interval when it made
+  // the window (host::swapIntervalForPlatform), and it cannot change after. So
+  // no per-game choice here, whatever this core's fps; said once.
+  static bool logged = false;
+  if (!logged)
+  {
+    logged = true;
+    _logger->info(TAG "Vsync is fixed at start-up under the Qt host (%s); not changed per game",
+                  host::vsyncEnabled() ? "on" : "off");
+  }
+#else
   SDL_DisplayMode displayMode;
   int monitorRefreshRate = 60; // assume 60Hz if we can't get an actual value
   if (SDL_GetCurrentDisplayMode(0, &displayMode) == 0 && displayMode.refresh_rate > 0)
@@ -1596,6 +1612,7 @@ void libretro::Core::resetVsync()
     // requested refresh rate is greater than monitor refresh rate, disable vsync
     SDL_GL_SetSwapInterval(1);
   }
+#endif
 }
 
 bool libretro::Core::setSubsystemInfo(const struct retro_subsystem_info* data)
