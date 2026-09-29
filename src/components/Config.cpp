@@ -98,6 +98,7 @@ bool Config::init(libretro::LoggerComponent* logger)
  #define mkdir(path) CreateDirectory(path, NULL)
 #else
  #define mkdir(path) ra_compat_mkdir(path)
+ #define SetCurrentDirectory(path) ra_compat_chdir(path)
 #endif
 
   mkdir(_assetsFolder.c_str());
@@ -112,7 +113,7 @@ bool Config::init(libretro::LoggerComponent* logger)
   _logger->info(TAG "Screenshots folder: %s", _screenshotsFolder.c_str());
 
   // TODO This should be done in main.cpp as soon as possible
-  ra_compat_chdir(_rootFolder.c_str());
+  SetCurrentDirectory(_rootFolder.c_str());
 
   // these settings are global and should not be modified by reset()
   _audioWhileFastForwarding = true;
