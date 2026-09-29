@@ -88,8 +88,13 @@ int main(int argc, char* argv[])
     return 1;
 #endif
 
+#ifdef _WIN32
   bool ok = app.init("RALibRetro", 640, 480);
   ok &= app.handleArgs(argc, argv);
+#else
+  const bool inited = app.init("RALibRetro", 640, 480);
+  bool ok = inited && app.handleArgs(argc, argv);
+#endif
 
   if (ok)
   {
@@ -108,6 +113,13 @@ int main(int argc, char* argv[])
 
     app.destroy();
   }
+#ifndef _WIN32
+  else if (inited)
+  {
+    // init built the Qt host; it must go before the QApplication does
+    app.destroy();
+  }
+#endif
 
   return ok ? 0 : 1;
 }

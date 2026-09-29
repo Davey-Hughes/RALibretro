@@ -564,7 +564,7 @@ TEST(QtHost_VideoContextSharesAndSwaps)
   CHECK(ctx.init(&logger, host));
   bool reported = false;
   for (const auto& line : logger.lines)
-    reported = reported || (line.find("OpenGL ") != std::string::npos && line.find(" profile, contexts share: 1") != std::string::npos);
+    reported = reported || (line.find("OpenGL ") != std::string::npos && line.find(", contexts share: 1") != std::string::npos);
   CHECK(reported);
 
   // the RA context and the core context: two contexts, sharing

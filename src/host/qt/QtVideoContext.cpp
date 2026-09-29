@@ -3,6 +3,7 @@
 #include "host/qt/QtHost.h"
 
 #include <QOpenGLContext>
+#include <QOpenGLFunctions>
 #include <QSurfaceFormat>
 #include <QWindow>
 
@@ -52,9 +53,9 @@ bool host::QtVideoContext::init(libretro::LoggerComponent* logger, QtHost& host)
     return false;
   }
 
-  const QSurfaceFormat format = _raContext->format();
-  _logger->info(TAG "OpenGL %d.%d %s profile, contexts share: %d", format.majorVersion(), format.minorVersion(),
-                format.profile() == QSurfaceFormat::CoreProfile ? "core" : "compatibility",
+  // what the driver gave, not what was asked for: format() echoes the request on some platforms
+  const char* version = reinterpret_cast<const char*>(_raContext->functions()->glGetString(GL_VERSION));
+  _logger->info(TAG "OpenGL %s, contexts share: %d", version != nullptr ? version : "(unknown)",
                 QOpenGLContext::areSharing(_raContext, _coreContext) ? 1 : 0);
   _ready = true;
   return true;
