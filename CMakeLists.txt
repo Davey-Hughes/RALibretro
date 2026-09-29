@@ -122,36 +122,18 @@ add_test(NAME qthost COMMAND ralibretro_qthost_tests)
 
 add_executable(RALibretro ${SOURCES_C} ${SOURCES_CXX})
 
-target_include_directories(RALibretro PRIVATE
-  compat
-  src
-  src/libretro
-  src/rcheevos/include
-  src/rcheevos/src
-  src/RAInterface
-  src/miniz
-  src/jsonsax
-  src/libmincrypt
-  compat
-)
-
+# How the application compiles its sources. ralibretro_dialog_callsites (below) compiles some of them the same way.
+set(APP_INCLUDE_DIRS compat src src/libretro src/rcheevos/include src/rcheevos/src src/RAInterface src/miniz
+    src/jsonsax src/libmincrypt)
 # Same defines as the Makefile, minus _WINDOWS.
-target_compile_definitions(RALibretro PRIVATE
-  OUTSIDE_SPEEX
-  RANDOM_PREFIX=speex
-  EXPORT=
-  _USE_SSE2
-  FIXED_POINT
-  LOG_TO_FILE
-  RA_NOTASKDIALOG
-)
-
+set(APP_DEFINITIONS OUTSIDE_SPEEX RANDOM_PREFIX=speex EXPORT= _USE_SSE2 FIXED_POINT LOG_TO_FILE RA_NOTASKDIALOG)
 # native_compat.h is C++; force-include it only for C++ sources
-target_compile_options(RALibretro PRIVATE
-  -Wno-unknown-pragmas
-  $<$<COMPILE_LANGUAGE:CXX>:-include>
-  $<$<COMPILE_LANGUAGE:CXX>:native_compat.h>
-)
+set(APP_COMPILE_OPTIONS -Wno-unknown-pragmas $<$<COMPILE_LANGUAGE:CXX>:-include>
+    $<$<COMPILE_LANGUAGE:CXX>:native_compat.h>)
+
+target_include_directories(RALibretro PRIVATE ${APP_INCLUDE_DIRS})
+target_compile_definitions(RALibretro PRIVATE ${APP_DEFINITIONS})
+target_compile_options(RALibretro PRIVATE ${APP_COMPILE_OPTIONS})
 target_include_directories(RALibretro PRIVATE ${SDL2_INCLUDE_DIRS})
 target_link_libraries(RALibretro PRIVATE ${SDL2_LIBRARIES} OpenGL::GL dl pthread ralibretro_menu ralibretro_qthost)
 
@@ -198,3 +180,37 @@ target_compile_options(ralibretro_dialog_tests PRIVATE
   ${MENU_WARNINGS} -fsanitize=address,undefined -fno-omit-frame-pointer)
 target_link_options(ralibretro_dialog_tests PRIVATE -fsanitize=address,undefined)
 add_test(NAME dialog COMMAND ralibretro_dialog_tests)
+
+# --- the three builder dialogs, from their real call sites ------------------------
+# Video::showDialog, Config::showEmulatorSettingsDialog and States::showDialog compiled as the application compiles
+# them, and linked against fakes (tests/dialoglayout/CallSites.cpp) in place of the Qt host, the RetroAchievements
+# library and the core. The specs they hand host::runDialog are rendered by the real presenter and checked.
+add_library(ralibretro_dialog_callsites STATIC
+  src/components/Video.cpp
+  src/components/Config.cpp
+  src/States.cpp
+  src/Gl.cpp
+  src/GlUtil.cpp
+  src/components/DialogNative.cpp
+  src/jsonsax/jsonsax.c
+  src/miniz/miniz.c
+  src/miniz/miniz_tdef.c
+  src/miniz/miniz_tinfl.c
+  src/miniz/miniz_zip.c
+  src/rcheevos/src/rcheevos/consoleinfo.c
+  tests/dialoglayout/CallSites.cpp
+)
+target_include_directories(ralibretro_dialog_callsites PRIVATE ${APP_INCLUDE_DIRS} ${SDL2_INCLUDE_DIRS} tests/dialoglayout)
+target_compile_definitions(ralibretro_dialog_callsites PRIVATE ${APP_DEFINITIONS})
+target_compile_options(ralibretro_dialog_callsites PRIVATE ${APP_COMPILE_OPTIONS})
+
+add_executable(ralibretro_dialog_layout_tests
+  tests/dialoglayout/main.cpp
+  tests/dialoglayout/DialogLayout_tests.cpp
+  tests/menu/Runner.cpp
+  src/host/qt/QtDialog.cpp
+)
+target_include_directories(ralibretro_dialog_layout_tests PRIVATE src tests/menu tests/dialoglayout)
+target_link_libraries(ralibretro_dialog_layout_tests PRIVATE ralibretro_dialog_callsites Qt6::Widgets OpenGL::GL ${SDL2_LIBRARIES})
+target_compile_options(ralibretro_dialog_layout_tests PRIVATE -Wall -Wextra)
+add_test(NAME dialoglayout COMMAND ralibretro_dialog_layout_tests)
