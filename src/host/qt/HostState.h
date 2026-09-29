@@ -3,7 +3,8 @@
 // Internal to the Qt target: what a live QtHost publishes for the host services
 // (HostServices.cpp). QtHost sets and clears it on the main thread, under
 // s_hostMutex; postToMainThread reads s_postTarget from any thread under the
-// same lock. The dialogs and messageBox run on the main thread only.
+// same lock, as does the services' logging. The dialogs and messageBox show
+// on the main thread only and refuse any other.
 
 #include <mutex>
 

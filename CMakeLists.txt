@@ -60,6 +60,7 @@ set(SOURCES_CXX
   src/components/VideoContext.cpp
   src/About.cpp
   src/Application.cpp
+  src/ApplicationNative.cpp
   src/CdRom.cpp
   src/Emulator.cpp
   src/Fsm.cpp

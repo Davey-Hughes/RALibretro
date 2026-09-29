@@ -16,6 +16,7 @@
 #include <QOpenGLContext>
 #include <QPlainTextEdit>
 #include <QSurfaceFormat>
+#include <QThread>
 #include <QVBoxLayout>
 
 #include <atomic>
@@ -36,22 +37,40 @@ namespace
 {
   std::atomic<unsigned> s_droppedPosts{0};
 
-  // A warning to the host's log, or to stderr when no host is up.
-  __attribute__((format(printf, 1, 2))) void warn(const char* fmt, ...)
+  // A line to the host's log, or to stderr when no host is up. Any thread:
+  // s_logger is read under the lock QtHost publishes it with.
+  __attribute__((format(printf, 2, 3))) void report(enum retro_log_level level, const char* fmt, ...)
   {
     va_list args;
     va_start(args, fmt);
-    if (s_logger != nullptr)
     {
-      if (s_logger->logLevel(RETRO_LOG_WARN))
-        s_logger->vprintf(RETRO_LOG_WARN, fmt, args);
-    }
-    else
-    {
-      std::vfprintf(stderr, fmt, args);
-      std::fputc('\n', stderr);
+      std::lock_guard<std::mutex> lock(s_hostMutex);
+      if (s_logger != nullptr)
+      {
+        if (s_logger->logLevel(level))
+          s_logger->vprintf(level, fmt, args);
+      }
+      else
+      {
+        std::vfprintf(stderr, fmt, args);
+        std::fputc('\n', stderr);
+      }
     }
     va_end(args);
+  }
+
+  // Widgets live on the application's thread only. Any other caller (SDL's
+  // audio thread, a toolkit worker) is refused, logged, and gets the answer a
+  // dialog closed without a button gives.
+  bool refusedOffGuiThread(const char* service, const char* caption)
+  {
+    const QCoreApplication* application = QCoreApplication::instance();
+    if (application != nullptr && QThread::currentThread() == application->thread())
+      return false;
+
+    report(RETRO_LOG_ERROR, TAG "%s \"%s\" called %s: not shown", service, caption != nullptr ? caption : "",
+           application != nullptr ? "off the GUI thread" : "with no QApplication");
+    return true;
   }
 }
 
@@ -111,6 +130,28 @@ int host::messageBox(const char* text, const char* caption, unsigned mbFlags)
   enum { kIconError = 0x0010, kIconQuestion = 0x0020, kIconWarning = 0x0030, kDefButton2 = 0x0100 };
   enum { kIdOk = 1, kIdCancel = 2, kIdYes = 6, kIdNo = 7 };
 
+  unsigned type = mbFlags & 0x0F;
+  if (type != kOk && type != kOkCancel && type != kYesNo)
+  {
+    report(RETRO_LOG_WARN, TAG "messageBox: button type 0x%X is not OK, OK/Cancel or Yes/No; showing OK and Cancel",
+           type);
+    type = kOkCancel;
+  }
+
+  // what a box closed without a button answers: Cancel, else No, else OK
+  const int escape = type == kOkCancel ? kIdCancel : type == kYesNo ? kIdNo : kIdOk;
+
+  if (refusedOffGuiThread("messageBox", caption))
+    return escape;
+
+  const char* autoDismiss = std::getenv("RALIBRETRO_AUTO_DISMISS_BOXES");
+  if (autoDismiss != nullptr && autoDismiss[0] != '\0')
+  {
+    report(RETRO_LOG_INFO, TAG "message box auto-dismissed: %s: %s", caption != nullptr ? caption : "",
+           text != nullptr ? text : "");
+    return escape;
+  }
+
   QMessageBox box(s_dialogParent);
   box.setWindowTitle(QString::fromUtf8(caption));
   box.setText(QString::fromUtf8(text));
@@ -123,25 +164,15 @@ int host::messageBox(const char* text, const char* caption, unsigned mbFlags)
   else
     box.setIcon(QMessageBox::Information);
 
-  unsigned type = mbFlags & 0x0F;
-  if (type != kOk && type != kOkCancel && type != kYesNo)
-  {
-    warn(TAG "messageBox: button type 0x%X is not OK, OK/Cancel or Yes/No; showing OK and Cancel", type);
-    type = kOkCancel;
-  }
-
-  int escape = kIdOk;
   switch (type)
   {
     case kYesNo:
       box.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
       box.setDefaultButton((mbFlags & kDefButton2) ? QMessageBox::No : QMessageBox::Yes);
-      escape = kIdNo;
       break;
     case kOkCancel:
       box.setStandardButtons(QMessageBox::Ok | QMessageBox::Cancel);
       box.setDefaultButton((mbFlags & kDefButton2) ? QMessageBox::Cancel : QMessageBox::Ok);
-      escape = kIdCancel;
       break;
     default:
       box.setStandardButtons(QMessageBox::Ok);
@@ -210,6 +241,9 @@ std::string host::toQtFileFilter(const std::string& win32Filter)
 
 std::string host::openFileDialog(const std::string& win32Filter, const std::string& initialDirectory)
 {
+  if (refusedOffGuiThread("openFileDialog", "Load"))
+    return std::string();
+
   const QString path = QFileDialog::getOpenFileName(s_dialogParent, QStringLiteral("Load"),
                                                     QString::fromStdString(initialDirectory),
                                                     QString::fromStdString(toQtFileFilter(win32Filter)));
@@ -219,6 +253,9 @@ std::string host::openFileDialog(const std::string& win32Filter, const std::stri
 std::string host::saveFileDialog(const std::string& win32Filter, const char* defaultExtension,
                                  const std::string& initialDirectory)
 {
+  if (refusedOffGuiThread("saveFileDialog", "Save"))
+    return std::string();
+
   // An instance rather than getSaveFileName: the default suffix (Win32's
   // lpstrDefExt) is then applied before the dialog asks about overwriting.
   QFileDialog dialog(s_dialogParent, QStringLiteral("Save"), QString::fromStdString(initialDirectory));
@@ -235,6 +272,9 @@ std::string host::saveFileDialog(const std::string& win32Filter, const char* def
 
 void host::aboutDialog(const char* logText)
 {
+  if (refusedOffGuiThread("aboutDialog", "About"))
+    return;
+
   QDialog dialog(s_dialogParent);
   dialog.setWindowTitle(QStringLiteral("About"));
   auto* layout = new QVBoxLayout(&dialog);

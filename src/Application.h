@@ -19,7 +19,6 @@ along with RALibretro.  If not, see <http://www.gnu.org/licenses/>.
 
 #pragma once
 
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -43,6 +42,8 @@ along with RALibretro.  If not, see <http://www.gnu.org/licenses/>.
 #include "States.h"
 
 #ifndef _WIN32
+#include <memory>
+
 #include "host/IHostEvents.h"
 
 namespace host
@@ -102,6 +103,10 @@ protected:
 
   // Called by SDL from the audio thread
   static void s_audioCallback(void* udata, Uint8* stream, int len);
+#ifndef _WIN32
+  // pauseForBadPerformance, posted to the main thread by the audio callback (ApplicationNative.cpp)
+  static void s_pauseForBadPerformance(void* app);
+#endif
 
   // Helpers
   void        processEvents();
@@ -133,7 +138,7 @@ protected:
   void        handle(const SDL_SysWMEvent* syswm);
   void        handleCommand(unsigned cmd); // a menu command (IDM_*), from WM_COMMAND or the Linux menu bar
 #ifndef _WIN32
-  // host::IHostEvents, called from inside QtHost::pump()
+  // host::IHostEvents, called from inside QtHost::pump() (ApplicationNative.cpp)
   void        onKey(SDL_Keycode sym, Uint16 mod, bool pressed, bool repeat) override;
   void        onMouseMove(int x, int y) override;
   void        onMouseButton(host::MouseButton button, bool pressed) override;

@@ -17,12 +17,15 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMainWindow>
+#include <QMessageBox>
 #include <QOpenGLContext>
+#include <QTimer>
 #include <QToolButton>
 #include <QWidget>
 #include <QWindow>
 #include <QtTest/QTest>
 
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -635,4 +638,79 @@ TEST(QtHost_Win32FilterBecomesAQtFilter)
   states.append("*.state");
   states.append("\0", 2);
   CHECK_EQ(std::string("State Files (*.state)"), host::toQtFileFilter(states));
+}
+
+TEST(QtHost_MessageBoxOffTheGuiThreadCreatesNoWidget)
+{
+  TestLogger logger;
+  Events events;
+  host::QtHost host(&logger, events);
+  CHECK(host.create("test", 64, 64));
+  const size_t linesBefore = logger.lines.size();
+
+  // what the audio callback once did: a box from a thread that is not Qt's
+  int answers[3] = {0, 0, 0};
+  long long elapsedMs = -1;
+  std::thread audio([&answers, &elapsedMs]() {
+    const auto t0 = std::chrono::steady_clock::now();
+    answers[0] = host::messageBox("text", "Off Thread OK", 0x0000);
+    answers[1] = host::messageBox("text", "Off Thread OK/Cancel", 0x0001);
+    answers[2] = host::messageBox("text", "Off Thread Yes/No", 0x0004);
+    elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
+  });
+  audio.join();
+
+  CHECK_EQ(1, answers[0]); // the escape answers: OK, Cancel, No
+  CHECK_EQ(2, answers[1]);
+  CHECK_EQ(7, answers[2]);
+  CHECK(elapsedMs >= 0 && elapsedMs < 1000); // at once: nothing waited for a click
+  CHECK_EQ(linesBefore + 3, logger.lines.size());
+  if (logger.lines.size() == linesBefore + 3)
+  {
+    const std::string& line = logger.lines.back();
+    CHECK(line.find("\"Off Thread Yes/No\"") != std::string::npos);
+    CHECK(line.find("off the GUI thread") != std::string::npos);
+  }
+  for (QWidget* widget : QApplication::allWidgets())
+    CHECK(qobject_cast<QMessageBox*>(widget) == nullptr);
+}
+
+TEST(QtHost_MessageBoxAutoDismissesForHeadlessRuns)
+{
+  TestLogger logger;
+  Events events;
+  host::QtHost host(&logger, events);
+  CHECK(host.create("test", 64, 64));
+
+  // Should the hook stop working, each exec() would wait for a click forever:
+  // close every box that opens, 500 ms in, so the test fails (on the log and
+  // the time) instead of hanging.
+  QTimer guard;
+  QObject::connect(&guard, &QTimer::timeout, []() {
+    for (QWidget* widget : QApplication::topLevelWidgets())
+    {
+      if (auto* box = qobject_cast<QMessageBox*>(widget))
+        box->reject();
+    }
+  });
+  guard.start(500);
+
+  setenv("RALIBRETRO_AUTO_DISMISS_BOXES", "1", 1);
+  const auto t0 = std::chrono::steady_clock::now();
+  const int ok = host::messageBox("Game has been paused.", "Performance Problem Detected", 0x0000);
+  const int okCancel = host::messageBox("Continue?", "OK or Cancel", 0x0001);
+  const int yesNo = host::messageBox("Save?", "Yes or No", 0x0004 | 0x0100);
+  const auto elapsedMs =
+    std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
+  unsetenv("RALIBRETRO_AUTO_DISMISS_BOXES");
+
+  CHECK_EQ(1, ok);
+  CHECK_EQ(2, okCancel);
+  CHECK_EQ(7, yesNo);
+  CHECK(elapsedMs < 1000);
+
+  bool logged = false;
+  for (const auto& line : logger.lines)
+    logged = logged || line == "[QT] message box auto-dismissed: Performance Problem Detected: Game has been paused.";
+  CHECK(logged);
 }

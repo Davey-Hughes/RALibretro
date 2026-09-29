@@ -36,7 +36,18 @@ namespace host
   // Win32 MessageBox on the main window. mbFlags are Win32's: 0x0001 OK/Cancel,
   // 0x0004 Yes/No, 0x0010 error icon, 0x0020 question icon, 0x0030 warning icon,
   // 0x0100 second button default. Returns 1 (OK), 2 (Cancel), 6 (Yes) or 7 (No);
-  // a box closed without a button answers Cancel, else No, else OK.
+  // a box closed without a button answers Cancel, else No, else OK (the escape
+  // answer).
+  //
+  // The dialogs below and this box are shown on the application's (main) thread
+  // only. Called from any other thread they create no widget: they log an error
+  // naming the caption and return at once, messageBox with the escape answer,
+  // the file dialogs with "".
+  //
+  // Test hook for headless runs: with the environment variable
+  // RALIBRETRO_AUTO_DISMISS_BOXES set to a non-empty value, messageBox shows
+  // nothing, logs "[QT] message box auto-dismissed: <caption>: <text>" and
+  // returns the escape answer, so a run nobody can click through still ends.
   int messageBox(const char* text, const char* caption, unsigned mbFlags);
 
   // Win32 filter strings ("Description\0*.a;*.b\0...\0\0") in, a chosen path or "" out.

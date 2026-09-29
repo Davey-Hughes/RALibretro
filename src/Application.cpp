@@ -455,6 +455,16 @@ error:
   case kNothingInited:      break;
   }
 
+#ifndef _WIN32
+  // A step that failed may have left its Qt object behind (the video context
+  // when its init fails, the host when create() does), and the ladder above
+  // only undoes finished steps. main() skips destroy() after a failed init,
+  // so these must go now, before the QApplication does.
+  _videoContext.reset();
+  _components.videoContext = NULL;
+  _host.reset();
+#endif
+
   _coreName.clear();
   return false;
 }
@@ -472,6 +482,14 @@ void Application::processEvents()
     _processingEvents = true;
     _host->pump();
     _processingEvents = wasProcessing;
+  }
+
+  // every call, not only when SDL's queue below has an event: the toolkit's
+  // work that the pump just ran is what changes hardcore
+  if (hardcore() != lastHardcore)
+  {
+    lastHardcore = hardcore();
+    updateMenu();
   }
 #endif
 
@@ -780,7 +798,9 @@ void Application::saveConfiguration()
   const Uint32 flags = SDL_GetWindowFlags(_window);
   if (flags & SDL_WINDOW_FULLSCREEN_DESKTOP)
 #else
-  if (_host->isFullscreen())
+  // no host (abort_handler can call destroy() before init built it or after it
+  // was reset): no window to save
+  if (!_host || _host->isFullscreen())
 #endif
   {
     // it doesn't make sense to save fullscreen mode as the player must load a game when they restart
@@ -859,6 +879,7 @@ void Application::destroy()
   SDL_DestroyWindow(_window);
 #else
   _videoContext.reset(); // the contexts; _video.destroy() above released what they held
+  _components.videoContext = NULL;
   _host.reset();         // the window; posted work is dropped from here on
 #endif
   SDL_Quit();
@@ -1621,7 +1642,12 @@ void Application::s_audioCallback(void* udata, Uint8* stream, int len)
         }
         else
         {
+#ifdef _WIN32
           app->pauseForBadPerformance();
+#else
+          // this is SDL's audio thread: the pause and its message box belong on the main thread
+          host::postToMainThread(&s_pauseForBadPerformance, app);
+#endif
         }
 
         app->_numAudioFaults /= 2;
@@ -3107,71 +3133,3 @@ bool Application::handleArgs(int argc, char* argv[])
 
   return _fsm.loadGame(game);
 }
-
-#ifndef _WIN32
-// ---- host::IHostEvents: the Qt window's events, as the SDL events the handlers above already take
-
-void Application::onKey(SDL_Keycode sym, Uint16 mod, bool pressed, bool repeat)
-{
-  SDL_KeyboardEvent key;
-  memset(&key, 0, sizeof(key));
-  key.type = pressed ? SDL_KEYDOWN : SDL_KEYUP;
-  key.state = pressed ? SDL_PRESSED : SDL_RELEASED;
-  key.repeat = repeat ? 1 : 0;
-  key.keysym.sym = sym;
-  key.keysym.mod = mod;
-
-  unsigned extra;
-  const KeyBinds::Action action = _keybinds.translate(&key, &extra);
-  handle(action, extra);
-}
-
-void Application::onMouseMove(int x, int y)
-{
-  SDL_MouseMotionEvent motion;
-  memset(&motion, 0, sizeof(motion));
-  motion.type = SDL_MOUSEMOTION;
-  motion.x = x;
-  motion.y = y;
-  handle(&motion);
-}
-
-void Application::onMouseButton(host::MouseButton button, bool pressed)
-{
-  SDL_MouseButtonEvent event;
-  memset(&event, 0, sizeof(event));
-  event.type = pressed ? SDL_MOUSEBUTTONDOWN : SDL_MOUSEBUTTONUP;
-  event.state = pressed ? SDL_PRESSED : SDL_RELEASED;
-  switch (button)
-  {
-    case host::MouseButton::Left:   event.button = SDL_BUTTON_LEFT; break;
-    case host::MouseButton::Middle: event.button = SDL_BUTTON_MIDDLE; break;
-    case host::MouseButton::Right:  event.button = SDL_BUTTON_RIGHT; break;
-  }
-  handle(&event);
-}
-
-void Application::onResized(int width, int height)
-{
-  // init() seeds the size once _video is up, so a resize before that loses nothing
-  if (_videoReady)
-    _video.windowResized(width, height);
-}
-
-void Application::onCloseRequested()
-{
-  _fsm.quit(); // the FSM asks RA about unsaved changes; the window stays until the loop ends
-}
-
-void Application::onMenuCommand(size_t sourceIndex, int id)
-{
-  // the menu bar is built in Task 7; until then nothing can call this
-  (void)sourceIndex;
-  (void)id;
-}
-
-void Application::onAbout()
-{
-  aboutDialog();
-}
-#endif
