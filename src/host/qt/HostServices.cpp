@@ -1,6 +1,7 @@
 #include "host/HostServices.h"
 
 #include "host/qt/HostState.h"
+#include "host/qt/QtDialog.h"
 // Components.h:85, the NDEBUG debug() stub, leaves its 'fmt' parameter unused
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
@@ -23,6 +24,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
+#include <memory>
 #include <mutex>
 #include <vector>
 
@@ -301,6 +303,26 @@ void host::aboutDialog(const char* logText)
   QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
   layout->addWidget(buttons);
   dialog.exec();
+}
+
+bool host::runDialog(DialogSpec& spec)
+{
+  if (refusedOffGuiThread("runDialog", spec.title.c_str()))
+    return false;
+
+  const char* autoDismiss = std::getenv("RALIBRETRO_AUTO_DISMISS_BOXES");
+  if (autoDismiss != nullptr && autoDismiss[0] != '\0')
+  {
+    report(RETRO_LOG_INFO, TAG "dialog auto-dismissed: %s", spec.title.c_str());
+    return false;
+  }
+
+  std::unique_ptr<QDialog> dialog(host::detail::buildDialog(spec, s_dialogParent));
+  if (dialog->exec() != QDialog::Accepted)
+    return false;
+
+  host::detail::readDialogAnswers(*dialog, spec);
+  return true;
 }
 
 void* host::getProcAddress(const char* symbol)

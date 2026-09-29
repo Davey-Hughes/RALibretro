@@ -101,6 +101,7 @@ add_library(ralibretro_qthost STATIC
   src/host/qt/QtVideoContext.cpp
   src/host/qt/QtMenuBar.cpp
   src/host/qt/QtKeyMap.cpp
+  src/host/qt/QtDialog.cpp
 )
 target_include_directories(ralibretro_qthost PUBLIC src src/libretro src/RAInterface)
 target_include_directories(ralibretro_qthost SYSTEM PUBLIC ${SDL2_INCLUDE_DIRS})
@@ -111,6 +112,7 @@ target_compile_options(ralibretro_qthost PRIVATE -Wall -Wextra)
 add_executable(ralibretro_qthost_tests
   tests/qthost/main.cpp
   tests/qthost/QtHost_tests.cpp
+  tests/qthost/QtDialog_tests.cpp
   tests/menu/Runner.cpp
 )
 target_include_directories(ralibretro_qthost_tests PRIVATE tests/menu)

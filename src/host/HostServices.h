@@ -4,6 +4,7 @@
 // No Qt here.
 
 #include <string>
+#include <vector>
 
 namespace host
 {
@@ -63,6 +64,39 @@ namespace host
   // About: a modal dialog with RALibretro's copyright line and the log text,
   // read-only, over an OK button.
   void aboutDialog(const char* logText);
+
+  // A dialog made with components/Dialog.h's calls, as the Linux Dialog (components/DialogNative.cpp) records it:
+  // the title, then the controls in the order they were added. x, y, w and h are the Win32 dialog-unit rectangle
+  // the caller passed (signed); the presenter takes only the row order from them.
+  struct DialogControl
+  {
+    enum class Kind { Label, Checkbox, Combobox, Editbox, Button };
+
+    Kind kind = Kind::Label;
+    unsigned id = 0;
+    int x = 0, y = 0, w = 0, h = 0;
+    std::string caption;              // label, checkbox, button
+    bool checked = false;             // checkbox
+    std::vector<std::string> options; // combo box
+    int selected = -1;                // combo box: the selected option, -1 for none
+    std::string text;                 // edit box
+    unsigned lines = 1;               // edit box: more than 1 is multi-line
+    bool readOnly = false;            // edit box
+    bool isDefault = false;           // button
+  };
+
+  struct DialogSpec
+  {
+    std::string title;
+    std::vector<DialogControl> controls;
+  };
+
+  // spec as a modal Qt dialog over the main window. OK (the button whose id is Win32's IDOK, 1) writes what the
+  // user left into each checkbox's checked, combo box's selected and edit box's text, and returns true. Cancel
+  // (IDCANCEL, 2), Esc or the close button leave spec as it was and return false. Main thread only, with the
+  // RALIBRETRO_AUTO_DISMISS_BOXES hook, as messageBox: then it shows nothing, logs the refusal or
+  // "[QT] dialog auto-dismissed: <title>", and returns false.
+  bool runDialog(DialogSpec& spec);
 
   // A GL entry point from the current context (what SDL_GL_GetProcAddress did).
   void* getProcAddress(const char* symbol);
