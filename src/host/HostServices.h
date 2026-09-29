@@ -28,8 +28,10 @@ namespace host
   };
 
   // Queues fpWork(pContext) on the main thread's Qt loop: RA_InstallHostDispatcher's
-  // post function. Any thread. Once the QtHost is gone the work is dropped and
-  // counted (droppedPosts), never run.
+  // post function. Any thread. Work posted once the QtHost is gone is dropped,
+  // never run, and counted (droppedPosts; Application::destroy logs a nonzero
+  // count). Work still queued when the QtHost goes is discarded with it, never
+  // run and not counted: ~QtHost deletes the object it was posted to.
   void postToMainThread(void (*fpWork)(void*), void* pContext);
   unsigned droppedPosts();
 

@@ -189,6 +189,11 @@ protected:
   // true between _video.init and _video.destroy: Qt delivers resizes from inside
   // QtHost::create() and any modal, before _video exists and while it goes away
   bool              _videoReady = false;
+  // true from the end of a successful init() to the start of destroy(): keys and
+  // the mouse arrive from inside create()'s expose wait and init's message boxes
+  bool              _inputReady = false;
+  // the fast-forward selection: what Windows keeps as File > Turbo's check mark
+  bool              _turboSelected = false;
 #endif
 #ifndef _WIN32
   std::unique_ptr<menu::HostMenuSource> _fileMenu;

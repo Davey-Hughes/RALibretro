@@ -49,6 +49,7 @@ namespace menu
     std::vector<System> systems;
 
     bool backgroundInput = false;
+    bool turbo = false; // the fast-forward selection: File > Turbo's check mark
   };
 
   // "&" -> "&&", so a file name is not read as a mnemonic (enableRecent does the same).

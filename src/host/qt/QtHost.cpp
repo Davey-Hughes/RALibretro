@@ -157,6 +157,11 @@ void host::QtHost::contentSize(int* width, int* height) const
 
 void host::QtHost::resizeContent(int width, int height)
 {
+  // Window Size with no game loaded asks for 0x0; Windows' SDL_SetWindowSize
+  // ignores a size <= 0, where this would collapse the window
+  if (width <= 0 || height <= 0)
+    return;
+
   _impl->requestedWidth = width;
   _impl->requestedHeight = height;
   const qreal dpr = _impl->gl->devicePixelRatio();

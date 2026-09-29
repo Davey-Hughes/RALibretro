@@ -126,7 +126,7 @@ menu::Menu menu::buildFileMenu(const HostMenuState& state)
   file.items.push_back(separator());
   file.items.push_back(item("Pause Game", IDM_PAUSE_GAME, tableEnables(state, IDM_PAUSE_GAME)));
   file.items.push_back(item("Resume Game", IDM_RESUME_GAME, tableEnables(state, IDM_RESUME_GAME)));
-  file.items.push_back(item("Turbo", IDM_TURBO_GAME, tableEnables(state, IDM_TURBO_GAME)));
+  file.items.push_back(item("Turbo", IDM_TURBO_GAME, tableEnables(state, IDM_TURBO_GAME), state.turbo));
   file.items.push_back(item("Reset Game", IDM_RESET_GAME, tableEnables(state, IDM_RESET_GAME)));
   file.items.push_back(separator());
 

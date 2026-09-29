@@ -528,6 +528,35 @@ TEST(QtHost_ResizeContentKeepsTheRenderAreaBelowTheBar)
   CHECK_EQ(240, h);
 }
 
+TEST(QtHost_ResizeContentIgnoresAnEmptySize)
+{
+  // Window Size with no game asks for 0x0. Windows' SDL_SetWindowSize ignores a
+  // size <= 0; resized to it, the main window collapses (measured offscreen: to
+  // 0x0, while the GL child keeps its last size).
+  TestLogger logger;
+  Events events;
+  host::QtHost host(&logger, events);
+  CHECK(host.create("test", 320, 240));
+  QWidget* window = host.renderWidget()->window();
+  const QSize before = window->size();
+
+  host.resizeContent(0, 0);
+  host.pump();
+  CHECK_EQ(before.width(), window->width());
+  CHECK_EQ(before.height(), window->height());
+
+  host.resizeContent(-1, 100);
+  host.resizeContent(100, 0);
+  host.pump();
+  CHECK_EQ(before.width(), window->width());
+  CHECK_EQ(before.height(), window->height());
+
+  int w = 0, h = 0;
+  host.contentSize(&w, &h);
+  CHECK_EQ(320, w);
+  CHECK_EQ(240, h);
+}
+
 TEST(QtHost_CloseButtonAsksAndDoesNotClose)
 {
   TestLogger logger;

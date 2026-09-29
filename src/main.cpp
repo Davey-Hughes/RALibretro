@@ -85,7 +85,9 @@ extern "C" void abort_handler(int signal_number)
 
 int main(int argc, char* argv[])
 {
+#ifdef _WIN32
   signal(SIGABRT, &abort_handler);
+#endif
 
 #ifndef _WIN32
   // The Qt application lives on this thread, from before Application::init to
@@ -99,7 +101,12 @@ int main(int argc, char* argv[])
   bool ok = app.init("RALibRetro", 640, 480);
   ok &= app.handleArgs(argc, argv);
 #else
+  // abort_handler tears the application down, so it is installed only once
+  // init has built one: before that an abort - Qt's qFatal on a display it
+  // cannot open - would run unloadCore and destroy on nothing
   const bool inited = app.init("RALibRetro", 640, 480);
+  if (inited)
+    signal(SIGABRT, &abort_handler);
   bool ok = inited && app.handleArgs(argc, argv);
 #endif
 
@@ -126,6 +133,9 @@ int main(int argc, char* argv[])
     // init built the Qt host; it must go before the QApplication does
     app.destroy();
   }
+
+  // destroyed: nothing left for abort_handler to tear down
+  signal(SIGABRT, SIG_DFL);
 #endif
 
   return ok ? 0 : 1;

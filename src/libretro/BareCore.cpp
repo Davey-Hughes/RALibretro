@@ -111,6 +111,13 @@ bool libretro::BareCore::load(libretro::LoggerComponent* logger, const char* pat
 
 void libretro::BareCore::destroy()
 {
+#ifndef _WIN32
+  // Core::loadGame's error path destroys the core and Application::unloadCore
+  // destroys it again. Windows' second FreeLibrary just fails; a second dlclose
+  // of the stale handle reads a freed link map. Once closed, nothing to do.
+  if (_handle == NULL)
+    return;
+#endif
   CORE_DLSYM(_init);
   CORE_DLSYM(_deinit);
   CORE_DLSYM(_apiVersion);
@@ -138,6 +145,9 @@ void libretro::BareCore::destroy()
   CORE_DLSYM(_getMemorySize);
 
   dynlib_close(_handle);
+#ifndef _WIN32
+  _handle = NULL;
+#endif
 
   _logger->info(TAG "Core destroyed");
 }

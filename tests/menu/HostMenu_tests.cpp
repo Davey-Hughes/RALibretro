@@ -226,6 +226,31 @@ TEST(HostMenu_MoreThanTwentySystemsGroupByManufacturer)
   CHECK(find(file.items, IDM_SYSTEM_FIRST + 20) != nullptr);
 }
 
+TEST(HostMenu_TurboIsCheckedWhileSelected)
+{
+  // the fast-forward selection, which Windows keeps as the item's check mark
+  menu::HostMenuState state;
+  state.state = Fsm::State::GameRunning;
+  const menu::Menu off = menu::buildFileMenu(state);
+  const menu::MenuItem* turbo = find(off.items, IDM_TURBO_GAME);
+  CHECK(turbo != nullptr);
+  if (turbo != nullptr)
+  {
+    CHECK(!turbo->checked);
+    CHECK(turbo->enabled);
+  }
+
+  state.turbo = true;
+  const menu::Menu on = menu::buildFileMenu(state);
+  turbo = find(on.items, IDM_TURBO_GAME);
+  CHECK(turbo != nullptr);
+  if (turbo != nullptr)
+  {
+    CHECK(turbo->checked);
+    CHECK(turbo->enabled);
+  }
+}
+
 TEST(HostMenu_SettingsMenu)
 {
   menu::HostMenuState state;

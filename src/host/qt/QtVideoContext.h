@@ -17,7 +17,9 @@ namespace host
 {
   class QtHost;
 
-  class QtVideoContext : public libretro::VideoContextComponent
+  // final: Application owns it as a unique_ptr of this type, and the base
+  // (Components.h, shared with Windows) has no virtual destructor
+  class QtVideoContext final : public libretro::VideoContextComponent
   {
   public:
     QtVideoContext() = default;

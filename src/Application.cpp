@@ -426,6 +426,9 @@ bool Application::init(const char* title, int width, int height)
 
   updateMenu();
   updateDiscMenu(true);
+#ifndef _WIN32
+  _inputReady = true; // from here onKey and the mouse handlers may act
+#endif
   return true;
 
 error:
@@ -449,7 +452,8 @@ error:
 #ifdef _WIN32
   case kWindowInited:       SDL_DestroyWindow(_window);
 #else
-  case kWindowInited:       _host.reset();
+  case kWindowInited:       _videoContext.reset(); // a context left by a failed init must not outlive its surface
+                            _host.reset();
 #endif
   case kKeyBindsInited:     _keybinds.destroy();
   case kSdlInited:          SDL_Quit();
@@ -858,6 +862,9 @@ void Application::saveConfiguration()
 
 void Application::destroy()
 {
+#ifndef _WIN32
+  _inputReady = false; // keys and the mouse still arrive from any modal shutdown pumps
+#endif
   _logger.info(TAG "begin shutdown");
 
   saveConfiguration();
@@ -884,17 +891,22 @@ void Application::destroy()
 #else
   _videoContext.reset(); // the contexts; _video.destroy() above released what they held
   _components.videoContext = NULL;
-  _menuSources.clear();  // the bar's lambdas hold source references; the window goes after them
+  // the window, and with it the bar whose lambdas hold source references;
+  // posted work is dropped from here on
+  _host.reset();
+  _menuSources.clear();  // then the sources, once nothing refers to them
   _raMenu.reset();
   _settingsMenu.reset();
   _fileMenu.reset();
-  _host.reset();         // the window; posted work is dropped from here on
 #endif
   SDL_Quit();
 
   _allocator.destroy();
 
 #ifndef _WIN32
+  const unsigned droppedPosts = host::droppedPosts();
+  if (droppedPosts > 0)
+    _logger.warn("[QT] %u posted calls dropped after the host was gone", droppedPosts);
   _logger.info(TAG "ran %u frames", _framesRun);
 #endif
   _logger.info(TAG "shutdown complete");
@@ -2936,6 +2948,7 @@ void Application::updateMouseCapture()
 
 void Application::toggleFastForwarding(unsigned extra)
 {
+#ifdef _WIN32
   // get the current fast forward selection
   MENUITEMINFO info;
   memset(&info, 0, sizeof(info));
@@ -2943,6 +2956,10 @@ void Application::toggleFastForwarding(unsigned extra)
   info.fMask = MIIM_STATE;
   GetMenuItemInfo(_menu, IDM_TURBO_GAME, false, &info);
   const bool checked = (info.fState == MFS_CHECKED);
+#else
+  // the selection Windows keeps as the Turbo item's check mark
+  const bool checked = _turboSelected;
+#endif
 
   switch (extra)
   {
@@ -2956,8 +2973,12 @@ void Application::toggleFastForwarding(unsigned extra)
 
     case 2: // FF toggle pressed - switch to opposite of selection (and change selection)
       _config.setFastForwarding(!checked);
+#ifdef _WIN32
       info.fState = checked ? MFS_UNCHECKED : MFS_CHECKED;
       SetMenuItemInfo(_menu, IDM_TURBO_GAME, false, &info);
+#else
+      _turboSelected = !checked; // File > Turbo shows it checked from the next open (hostMenuState)
+#endif
       break;
   }
 

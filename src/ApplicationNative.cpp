@@ -3,7 +3,13 @@
 
 #ifndef _WIN32
 
+// Shared headers this file alone compiles with -Wextra: Components.h's NDEBUG
+// debug() stub and Dialog.h's default dialogProc (through Input.h) leave
+// parameters unused. Both are Windows-visible; the warnings stop here instead.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 #include "Application.h"
+#pragma GCC diagnostic pop
 
 // complete types for the unique_ptr members: the vtable, and with it the
 // destructor, is emitted here, where onKey (the first virtual) is defined
@@ -27,6 +33,11 @@
 
 void Application::onKey(SDL_Keycode sym, Uint16 mod, bool pressed, bool repeat)
 {
+  // as onResized: Qt delivers input from inside create()'s expose wait and
+  // init's message boxes, before the handlers' components are all up
+  if (!_inputReady)
+    return;
+
   SDL_KeyboardEvent key;
   memset(&key, 0, sizeof(key));
   key.type = pressed ? SDL_KEYDOWN : SDL_KEYUP;
@@ -42,6 +53,9 @@ void Application::onKey(SDL_Keycode sym, Uint16 mod, bool pressed, bool repeat)
 
 void Application::onMouseMove(int x, int y)
 {
+  if (!_inputReady)
+    return;
+
   SDL_MouseMotionEvent motion;
   memset(&motion, 0, sizeof(motion));
   motion.type = SDL_MOUSEMOTION;
@@ -52,6 +66,9 @@ void Application::onMouseMove(int x, int y)
 
 void Application::onMouseButton(host::MouseButton button, bool pressed)
 {
+  if (!_inputReady)
+    return;
+
   SDL_MouseButtonEvent event;
   memset(&event, 0, sizeof(event));
   event.type = pressed ? SDL_MOUSEBUTTONDOWN : SDL_MOUSEBUTTONUP;
@@ -149,6 +166,7 @@ menu::HostMenuState Application::hostMenuState()
   }
 
   state.backgroundInput = _config.getBackgroundInput();
+  state.turbo = _turboSelected;
   return state;
 }
 

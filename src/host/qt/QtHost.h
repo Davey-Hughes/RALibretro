@@ -46,7 +46,8 @@ namespace host
     QWindow* glSurface() const;
     QWidget* renderWidget() const; // for tests
 
-    // Device pixels.
+    // Device pixels. resizeContent ignores a width or height <= 0, as
+    // SDL_SetWindowSize does.
     void contentSize(int* width, int* height) const;
     void resizeContent(int width, int height);
 

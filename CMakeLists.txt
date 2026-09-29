@@ -57,7 +57,6 @@ set(SOURCES_CXX
   src/components/Logger.cpp
   src/components/Microphone.cpp
   src/components/Video.cpp
-  src/components/VideoContext.cpp
   src/About.cpp
   src/Application.cpp
   src/ApplicationNative.cpp
@@ -71,11 +70,23 @@ set(SOURCES_CXX
   src/KeyBinds.cpp
   src/main.cpp
   src/Memory.cpp
-  src/menu/HostMenu.cpp
-  src/menu/RAMenuSource.cpp
   src/States.cpp
   src/Util.cpp
 )
+
+# --- the menu models --------------------------------------------------------------
+# File, Settings and RetroAchievements as plain data (no Qt, no GL, no RA
+# library), compiled once for the application and its tests. New menu code is
+# held to -Wall -Wextra, and gets no force-include: it needs no Win32 fakes.
+set(MENU_WARNINGS -Wall -Wextra)
+
+add_library(ralibretro_menu STATIC
+  src/menu/HostMenu.cpp
+  src/menu/RAMenuSource.cpp
+)
+target_include_directories(ralibretro_menu PRIVATE src src/RAInterface src/rcheevos/include)
+target_include_directories(ralibretro_menu SYSTEM PRIVATE ${SDL2_INCLUDE_DIRS})
+target_compile_options(ralibretro_menu PRIVATE ${MENU_WARNINGS})
 
 # --- the Qt host ---------------------------------------------------------------
 # Linux only. Its own target so native_compat.h's force-include never reaches a
@@ -139,26 +150,27 @@ target_compile_options(RALibretro PRIVATE
   $<$<COMPILE_LANGUAGE:CXX>:native_compat.h>
 )
 target_include_directories(RALibretro PRIVATE ${SDL2_INCLUDE_DIRS})
-target_link_libraries(RALibretro PRIVATE ${SDL2_LIBRARIES} OpenGL::GL dl pthread ralibretro_qthost)
+target_link_libraries(RALibretro PRIVATE ${SDL2_LIBRARIES} OpenGL::GL dl pthread ralibretro_menu ralibretro_qthost)
 
-# --- native menu -------------------------------------------------------------
-# The menu's logic (no ImGui, no GL, no RA library) has unit tests of its own:
-# RALibretro has no test framework. New menu code is held to -Wall -Wextra, and
-# the tests also run under ASan and UBSan.
-set(MENU_WARNINGS -Wall -Wextra)
+# Application's Linux-only members are new code too; unlike the menu they are
+# part of the application, and keep its force-include.
+set_source_files_properties(src/ApplicationNative.cpp PROPERTIES COMPILE_OPTIONS "${MENU_WARNINGS}")
 
+# --- native menu tests ---------------------------------------------------------
+# The menu's logic has unit tests of its own: RALibretro has no test framework.
+# The tests run under ASan and UBSan. The menu models come from ralibretro_menu,
+# built as the application links them, so those two sources are ASan-instrumented
+# only in an ASan build directory (CMAKE_CXX_FLAGS=-fsanitize=address).
 add_executable(ralibretro_menu_tests
   tests/menu/main.cpp
   tests/menu/Runner.cpp
   tests/menu/RAMenuSource_tests.cpp
   tests/menu/QtKeyMap_tests.cpp
-  src/menu/RAMenuSource.cpp
   src/host/qt/QtKeyMap.cpp
   tests/menu/HostMenu_tests.cpp
-  src/menu/HostMenu.cpp
 )
 target_include_directories(ralibretro_menu_tests PRIVATE src src/RAInterface src/rcheevos/include ${SDL2_INCLUDE_DIRS})
-target_link_libraries(ralibretro_menu_tests PRIVATE Qt6::Core ${SDL2_LIBRARIES})
+target_link_libraries(ralibretro_menu_tests PRIVATE ralibretro_menu Qt6::Core ${SDL2_LIBRARIES})
 target_compile_options(ralibretro_menu_tests PRIVATE
   ${MENU_WARNINGS} -fsanitize=address,undefined -fno-omit-frame-pointer)
 target_link_options(ralibretro_menu_tests PRIVATE -fsanitize=address,undefined)
