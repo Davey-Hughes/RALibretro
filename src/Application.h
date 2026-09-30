@@ -157,6 +157,7 @@ protected:
   menu::HostMenuState hostMenuState(); // what File and Settings show right now (non-const: Config's getters are not)
   void        createMenuBar();
   void        presentOverlayWhileIdle(); // paused or with no game: present again when the overlay changed
+  void        addOverlayKeys(ControllerInput& input); // the arrow keys, Enter and Backspace navigate the overlay too
 #endif
   void        handle(const SDL_WindowEvent* window);
   void        handle(const SDL_MouseMotionEvent* motion);
@@ -198,6 +199,8 @@ protected:
   bool              _turboSelected = false;
   // an expose while no frame runs: presentOverlayWhileIdle presents again (OverlayPresent.h)
   bool              _exposedWhileIdle = false;
+  // the overlay's own keys held now (OverlayKeys.h), whatever controller 1 is bound to
+  unsigned          _overlayKeysHeld = 0;
 #endif
 #ifndef _WIN32
   std::unique_ptr<menu::HostMenuSource> _fileMenu;

@@ -157,6 +157,7 @@ add_executable(ralibretro_menu_tests
   tests/menu/HostMenu_tests.cpp
   src/menu/HostMenu.cpp
   tests/menu/OverlayPresent_tests.cpp
+  tests/menu/OverlayKeys_tests.cpp
 )
 target_include_directories(ralibretro_menu_tests PRIVATE src src/RAInterface src/rcheevos/include ${SDL2_INCLUDE_DIRS})
 target_link_libraries(ralibretro_menu_tests PRIVATE Qt6::Core ${SDL2_LIBRARIES})

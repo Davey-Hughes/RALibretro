@@ -774,6 +774,9 @@ void Application::run()
         input.m_bConfirmPressed = _input.read(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_A) != 0;
         input.m_bCancelPressed = _input.read(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_B) != 0;
         input.m_bQuitPressed = _input.read(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_START) != 0;
+#ifndef _WIN32
+        addOverlayKeys(input); // the arrow keys, Enter and Backspace too, whatever controller 1 is bound to
+#endif
 
         RA_NavigateOverlay(&input);
       }

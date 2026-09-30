@@ -19,6 +19,7 @@
 #include "menu/HostMenu.h"
 #include "menu/RAMenuSource.h"
 #include "components/DialogNative.h"
+#include "OverlayKeys.h"
 #include "OverlayPresent.h"
 
 #include "resource.h"
@@ -40,6 +41,9 @@ void Application::onKey(SDL_Keycode sym, Uint16 mod, bool pressed, bool repeat)
   // init's message boxes, before the handlers' components are all up
   if (!_inputReady)
     return;
+
+  // the overlay's own keys, before the bindings: they navigate it whatever controller 1 is bound to
+  _overlayKeysHeld = overlaykeys::update(_overlayKeysHeld, sym, mod, pressed);
 
   SDL_KeyboardEvent key;
   memset(&key, 0, sizeof(key));
@@ -198,6 +202,16 @@ void Application::createMenuBar()
   // picture: here because this is the one Linux-only step of init, and it runs
   // once the video context exists (Windows' overlay is a window of its own).
   _videoContext->setOverlaySource(RA_UpdateOverlayImage);
+}
+
+// ---- the overlay's keys
+
+void Application::addOverlayKeys(ControllerInput& input)
+{
+  // run() reads controller 1 for the overlay, and controller 1 may be a gamepad
+  // (KeyBinds' default when one is connected): the arrow keys, Enter and
+  // Backspace navigate it as well
+  overlaykeys::apply(_overlayKeysHeld, input);
 }
 
 // ---- the overlay while no frame runs
