@@ -37,6 +37,13 @@ void host::GlWindow::forwardButton(QMouseEvent* event, bool pressed)
 void host::GlWindow::mousePressEvent(QMouseEvent* event) { forwardButton(event, true); }
 void host::GlWindow::mouseReleaseEvent(QMouseEvent* event) { forwardButton(event, false); }
 
+void host::GlWindow::exposeEvent(QExposeEvent*)
+{
+  // an expose that hides the window (unexposed) needs no picture
+  if (isExposed())
+    _events.onExposed();
+}
+
 void host::GlWindow::resizeEvent(QResizeEvent* event)
 {
   const qreal dpr = devicePixelRatio();

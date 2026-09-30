@@ -39,6 +39,10 @@ namespace host
     // The render area's size in device pixels.
     virtual void onResized(int width, int height) = 0;
 
+    // The render area was exposed: shown, or given a new size it now has, and wants a picture. Nothing redraws by
+    // itself while no frame runs (paused, no game).
+    virtual void onExposed() = 0;
+
     // The window's close button. The host does not close; Application decides.
     virtual void onCloseRequested() = 0;
 

@@ -32,10 +32,12 @@ namespace overlaypresent
   }
 
   // What the paused loop presents, given the overlay serial the last present carried and the one the library has
-  // now. A change to 0 needs a present too: it wipes the overlay off.
-  inline Present decide(Fsm::State state, int lastSerial, int newSerial, bool hasGamePicture)
+  // now. A change to 0 needs a present too: it wipes the overlay off. So does an expose (exposed): the window was
+  // shown or given a new size, and what it last got may be at the old one - leaving fullscreen while paused, the
+  // present the size change brings can land before the window has its new size, and shows scaled into a corner.
+  inline Present decide(Fsm::State state, int lastSerial, int newSerial, bool hasGamePicture, bool exposed = false)
   {
-    if (!idle(state) || newSerial == lastSerial)
+    if (!idle(state) || (newSerial == lastSerial && !exposed))
       return Present::Nothing;
 
     return hasGamePicture ? Present::Redraw : Present::OverlayOnly;

@@ -13,6 +13,7 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QExposeEvent>
 #include <QKeyEvent>
 #include <QMenu>
 #include <QMenuBar>
@@ -60,6 +61,7 @@ namespace
     int closes = 0;
     std::vector<std::pair<size_t, int>> commands;
     int abouts = 0;
+    int exposes = 0;
 
     void onKey(SDL_Keycode sym, Uint16 mod, bool pressed, bool repeat) override
     {
@@ -72,6 +74,7 @@ namespace
     void onCloseRequested() override { ++closes; }
     void onMenuCommand(size_t source, int id) override { commands.emplace_back(source, id); }
     void onAbout() override { ++abouts; }
+    void onExposed() override { ++exposes; }
   };
 
   struct FakeSource : menu::IMenuSource
@@ -648,6 +651,21 @@ TEST(QtHost_ResizeContentKeepsTheRenderAreaBelowTheBar)
   host.contentSize(&w, &h);
   CHECK_EQ(320, w);
   CHECK_EQ(240, h);
+}
+
+// Qt exposes the game area once the window has its new size: leaving fullscreen while paused, Application presents
+// again then (OverlayPresent's expose), since a present from before it can show scaled into a corner.
+TEST(QtHost_AnExposeOfTheGameAreaReachesTheEvents)
+{
+  TestLogger logger;
+  Events events;
+  host::QtHost host(&logger, events);
+  CHECK(host.create("test", 64, 64));
+  host.pump();
+  const int before = events.exposes;
+  QExposeEvent expose(QRegion(0, 0, 64, 64));
+  QCoreApplication::sendEvent(host.glSurface(), &expose);
+  CHECK_EQ(before + 1, events.exposes);
 }
 
 TEST(QtHost_ResizeContentIgnoresAnEmptySize)

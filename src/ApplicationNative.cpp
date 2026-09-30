@@ -30,6 +30,7 @@
 #include <map>
 #include <set>
 #include <string.h>
+#include <utility>
 
 // ---- host::IHostEvents: the Qt window's events, as the SDL events the handlers in Application.cpp already take
 
@@ -89,6 +90,14 @@ void Application::onResized(int width, int height)
   // init() seeds the size once _video is up, so a resize before that loses nothing
   if (_videoReady)
     _video.windowResized(width, height);
+}
+
+void Application::onExposed()
+{
+  // Qt exposes the game area once the window has a new size it now has (leaving
+  // fullscreen) or is shown again. While no frame runs, presentOverlayWhileIdle
+  // presents again then - not from here, inside the pump.
+  _exposedWhileIdle = true;
 }
 
 void Application::onCloseRequested()
@@ -198,6 +207,8 @@ void Application::presentOverlayWhileIdle()
   // Called from processEvents, which runs every pass of the paused loop
   // (about every 16 ms) and before every frame. Frames carry the overlay
   // themselves, so this acts only while none run.
+  // taken on every call: while frames run, the next one presents anyway
+  const bool exposed = std::exchange(_exposedWhileIdle, false);
   const Fsm::State state = _fsm.currentState();
   if (!_videoReady || !overlaypresent::idle(state))
     return;
@@ -205,7 +216,7 @@ void Application::presentOverlayWhileIdle()
   // a game's last picture only while one is loaded: after an unload Video's
   // texture still holds it, and the window shows black
   const int serial = _videoContext->pollOverlay();
-  switch (overlaypresent::decide(state, _videoContext->presentedOverlaySerial(), serial, isGameActive()))
+  switch (overlaypresent::decide(state, _videoContext->presentedOverlaySerial(), serial, isGameActive(), exposed))
   {
     case overlaypresent::Present::Redraw:      _video.redraw(); break;
     case overlaypresent::Present::OverlayOnly: _videoContext->presentOverlayOnly(); break;

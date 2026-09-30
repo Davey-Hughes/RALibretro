@@ -49,3 +49,19 @@ TEST(OverlayPresent_AnOverlayThatWentAwayIsWipedOnce)
   CHECK(overlaypresent::decide(State::GamePaused, 9, 0, true) == Present::Redraw);
   CHECK(overlaypresent::decide(State::Start, 9, 0, false) == Present::OverlayOnly);
 }
+
+// Leaving fullscreen while paused: the one present the size change brings can land before Qt has given the window
+// its new size, and shows scaled into a corner until something presents again. Qt's expose, which comes once the
+// window has it, presents again whatever the serial.
+TEST(OverlayPresent_AnExposeWhileIdlePresentsAgain)
+{
+  CHECK(overlaypresent::decide(State::GamePaused, 7, 7, true, true) == Present::Redraw);
+  CHECK(overlaypresent::decide(State::Start, 0, 0, false, true) == Present::OverlayOnly);
+  CHECK(overlaypresent::decide(State::GamePaused, 7, 7, true, false) == Present::Nothing);
+}
+
+TEST(OverlayPresent_AnExposeWhileTheGameRunsPresentsNothing)
+{
+  // its next frame presents anyway
+  CHECK(overlaypresent::decide(State::GameRunning, 7, 7, true, true) == Present::Nothing);
+}

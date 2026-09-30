@@ -23,6 +23,7 @@ namespace host
     void mousePressEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
+    void exposeEvent(QExposeEvent* event) override;
 
   private:
     void forwardButton(QMouseEvent* event, bool pressed);

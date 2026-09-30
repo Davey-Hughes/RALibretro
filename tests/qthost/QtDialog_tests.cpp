@@ -130,6 +130,7 @@ namespace
     void onCloseRequested() override {}
     void onMenuCommand(size_t, int) override {}
     void onAbout() override {}
+    void onExposed() override {}
   };
 }
 

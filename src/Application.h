@@ -149,6 +149,7 @@ protected:
   void        onMouseMove(int x, int y) override;
   void        onMouseButton(host::MouseButton button, bool pressed) override;
   void        onResized(int width, int height) override;
+  void        onExposed() override;
   void        onCloseRequested() override;
   void        onMenuCommand(size_t sourceIndex, int id) override;
   void        onAbout() override;
@@ -195,6 +196,8 @@ protected:
   bool              _inputReady = false;
   // the fast-forward selection: what Windows keeps as File > Turbo's check mark
   bool              _turboSelected = false;
+  // an expose while no frame runs: presentOverlayWhileIdle presents again (OverlayPresent.h)
+  bool              _exposedWhileIdle = false;
 #endif
 #ifndef _WIN32
   std::unique_ptr<menu::HostMenuSource> _fileMenu;
