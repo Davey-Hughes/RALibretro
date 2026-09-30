@@ -113,6 +113,7 @@ add_executable(ralibretro_qthost_tests
   tests/qthost/main.cpp
   tests/qthost/QtHost_tests.cpp
   tests/qthost/QtDialog_tests.cpp
+  tests/qthost/Overlay_tests.cpp
   tests/menu/Runner.cpp
 )
 target_include_directories(ralibretro_qthost_tests PRIVATE tests/menu)
