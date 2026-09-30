@@ -13,6 +13,7 @@
 #include <QOpenGLExtraFunctions>
 #include <QOpenGLFunctions>
 #include <QPainter>
+#include <QSize>
 #include <QWidget>
 #include <QWindow>
 
@@ -30,8 +31,22 @@ namespace
   {
   public:
     std::vector<std::string> lines;
+    std::vector<retro_log_level> levels;
 
-    void log(enum retro_log_level, const char* line, size_t length) override { lines.emplace_back(line, length); }
+    void log(enum retro_log_level level, const char* line, size_t length) override
+    {
+      lines.emplace_back(line, length);
+      levels.push_back(level);
+    }
+
+    // the lines at this level that contain text
+    unsigned count(retro_log_level level, const char* text) const
+    {
+      unsigned n = 0;
+      for (size_t i = 0; i < lines.size(); ++i)
+        n += levels[i] == level && lines[i].find(text) != std::string::npos ? 1 : 0;
+      return n;
+    }
   };
 
   struct Events : host::IHostEvents
@@ -50,6 +65,7 @@ namespace
   {
     int serial = 0;
     QImage image;
+    int stride = 0; // 0: the image's own
     int calls = 0;
     int width = -1;
     int height = -1;
@@ -70,7 +86,7 @@ namespace
       return 0;
     }
     *pixels = s_overlay.image.constBits();
-    *stride = static_cast<int>(s_overlay.image.bytesPerLine());
+    *stride = s_overlay.stride != 0 ? s_overlay.stride : static_cast<int>(s_overlay.image.bytesPerLine());
     return s_overlay.serial;
   }
 
@@ -139,8 +155,10 @@ namespace
     // the pixel at image (x, y), top-down, as r,g,b
     std::string pixel(int x, int y)
     {
+      QWindow* window = host.glSurface();
+      const int height = qRound(window->height() * window->devicePixelRatio());
       unsigned char rgba[4] = {0, 0, 0, 0};
-      gl->glReadPixels(x, 63 - y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+      gl->glReadPixels(x, height - 1 - y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
       return std::to_string(rgba[0]) + "," + std::to_string(rgba[1]) + "," + std::to_string(rgba[2]);
     }
   };
@@ -217,6 +235,8 @@ TEST(QtOverlay_EveryGlStateTouchedIsRestored)
   f.gl->glGetIntegerv(GL_BLEND_DST_ALPHA, &value);
   CHECK_EQ(GL_ONE, value);
   f.gl->glGetIntegerv(GL_BLEND_EQUATION_RGB, &value);
+  CHECK_EQ(GL_FUNC_SUBTRACT, value);
+  f.gl->glGetIntegerv(GL_BLEND_EQUATION_ALPHA, &value);
   CHECK_EQ(GL_FUNC_SUBTRACT, value);
   f.gl->glGetIntegerv(GL_CURRENT_PROGRAM, &value);
   CHECK_EQ(0, value);
@@ -342,4 +362,186 @@ TEST(QtOverlay_AHiddenWindowIsNotAskedForAnOverlay)
   CHECK_EQ(7, f.ctx.pollOverlay()); // the last present's: nothing to decide while hidden
   f.ctx.swapBuffers();
   CHECK_EQ(calls, s_overlay.calls);
+}
+
+TEST(QtOverlay_ABlendLeftOnStaysOnWithItsOwnEquations)
+{
+  Fixture f("QtOverlay_ABlendLeftOnStaysOnWithItsOwnEquations");
+  if (!f.ok)
+    return;
+
+  // blending as someone else left it: on, and every one of its four factors and two equations different
+  f.gl->glEnable(GL_BLEND);
+  f.gl->glBlendFuncSeparate(GL_DST_ALPHA, GL_ONE_MINUS_DST_COLOR, GL_SRC_ALPHA_SATURATE, GL_CONSTANT_COLOR);
+  f.gl->glBlendEquationSeparate(GL_FUNC_REVERSE_SUBTRACT, GL_MAX);
+
+  CHECK_EQ(7, f.ctx.compositeOverlay());
+
+  GLint value = -1;
+  CHECK(f.gl->glIsEnabled(GL_BLEND) == GL_TRUE);
+  f.gl->glGetIntegerv(GL_BLEND_SRC_RGB, &value);
+  CHECK_EQ(GL_DST_ALPHA, value);
+  f.gl->glGetIntegerv(GL_BLEND_DST_RGB, &value);
+  CHECK_EQ(GL_ONE_MINUS_DST_COLOR, value);
+  f.gl->glGetIntegerv(GL_BLEND_SRC_ALPHA, &value);
+  CHECK_EQ(GL_SRC_ALPHA_SATURATE, value);
+  f.gl->glGetIntegerv(GL_BLEND_DST_ALPHA, &value);
+  CHECK_EQ(GL_CONSTANT_COLOR, value);
+  f.gl->glGetIntegerv(GL_BLEND_EQUATION_RGB, &value);
+  CHECK_EQ(GL_FUNC_REVERSE_SUBTRACT, value);
+  f.gl->glGetIntegerv(GL_BLEND_EQUATION_ALPHA, &value);
+  CHECK_EQ(GL_MAX, value);
+  CHECK(f.gl->glGetError() == GL_NO_ERROR);
+}
+
+TEST(QtOverlay_ANewSizeReallocatesTheTextureAndDrawsAtIt)
+{
+  Fixture f("QtOverlay_ANewSizeReallocatesTheTextureAndDrawsAtIt");
+  if (!f.ok)
+    return;
+  CHECK_EQ(7, f.ctx.compositeOverlay()); // the texture is 64x64
+
+  // Smaller, then back. Offscreen keeps the drawable at the size it was made (measured: past 64 it reads 0,0,0), so
+  // the window shrinks first. The old texture would still map its whole 64x64 over the window: (30,38) would sample
+  // texel (48,50), outside the new image.
+  f.host.resizeContent(40, 48);
+  f.host.pump();
+  CHECK(f.host.glSurface()->size() == QSize(40, 48));
+  QImage image(40, 48, QImage::Format_ARGB32_Premultiplied);
+  image.fill(Qt::transparent);
+  {
+    QPainter painter(&image);
+    painter.setCompositionMode(QPainter::CompositionMode_Source);
+    painter.fillRect(8, 8, 16, 16, QColor::fromRgba(0x800000FFu));
+    painter.fillRect(28, 36, 8, 8, QColor::fromRgba(0xFFFF0000u));
+  }
+  s_overlay.image = image;
+  s_overlay.serial = 8;
+  f.clear(0.0f, 1.0f, 0.0f);
+
+  CHECK_EQ(8, f.ctx.compositeOverlay());
+
+  CHECK_EQ(40, s_overlay.width);
+  CHECK_EQ(48, s_overlay.height);
+  CHECK_EQ(2u, f.ctx.overlayUploads());
+  CHECK_EQ(std::string("255,0,0"), f.pixel(30, 38));
+  CHECK_EQ(std::string("255,0,0"), f.pixel(35, 43));
+  CHECK_EQ(std::string("0,255,0"), f.pixel(36, 44));
+  CHECK_EQ(std::string("0,255,0"), f.pixel(39, 47));
+  CHECK(near(f.pixel(12, 12), 0, 127, 128));
+  CHECK_EQ(std::string("0,255,0"), f.pixel(24, 24));
+
+  // and larger again: an upload of 64x64 into a 40x48 texture would fail
+  f.host.resizeContent(64, 64);
+  f.host.pump();
+  CHECK(f.host.glSurface()->size() == QSize(64, 64));
+  s_overlay.image = testImage();
+  s_overlay.serial = 9;
+  f.clear(0.0f, 1.0f, 0.0f);
+
+  CHECK_EQ(9, f.ctx.compositeOverlay());
+
+  CHECK_EQ(3u, f.ctx.overlayUploads());
+  CHECK_EQ(std::string("255,0,0"), f.pixel(44, 44));
+  CHECK_EQ(std::string("0,255,0"), f.pixel(32, 32));
+  CHECK(near(f.pixel(12, 12), 0, 127, 128));
+  CHECK_EQ(0u, f.logger.count(RETRO_LOG_ERROR, ""));
+}
+
+TEST(QtOverlay_ABadStrideIsNotDrawnAndTurnsTheOverlayOff)
+{
+  Fixture f("QtOverlay_ABadStrideIsNotDrawnAndTurnsTheOverlayOff");
+  if (!f.ok)
+    return;
+  f.clear(0.0f, 1.0f, 0.0f);
+  s_overlay.stride = 64 * 4 - 4; // a row shorter than its 64 pixels
+
+  CHECK_EQ(0, f.ctx.compositeOverlay());
+
+  CHECK_EQ(std::string("0,255,0"), f.pixel(44, 44));
+  CHECK_EQ(0u, f.ctx.overlayUploads());
+  CHECK_EQ(1u, f.logger.count(RETRO_LOG_ERROR, "overlay: 252 bytes per row for 64 pixels"));
+  CHECK_EQ(1u, f.logger.count(RETRO_LOG_ERROR, ""));
+
+  // off for the session: the source is not asked again, not even once its rows are right
+  const int calls = s_overlay.calls;
+  s_overlay.stride = 0;
+  s_overlay.serial = 8;
+  CHECK_EQ(0, f.ctx.compositeOverlay());
+  CHECK_EQ(0, f.ctx.pollOverlay());
+  CHECK_EQ(calls, s_overlay.calls);
+  CHECK_EQ(std::string("0,255,0"), f.pixel(44, 44));
+  CHECK_EQ(1u, f.logger.count(RETRO_LOG_ERROR, ""));
+}
+
+TEST(QtOverlay_AnErrorRaisedBeforeItDrawsIsNotTheOverlays)
+{
+  // Gl (Gl.cpp) stops drawing at the first error it sees. An error someone else raised must neither switch the
+  // overlay off nor be left behind: it is logged at WARN and cleared, and the overlay draws.
+  Fixture f("QtOverlay_AnErrorRaisedBeforeItDrawsIsNotTheOverlays");
+  if (!f.ok)
+    return;
+  f.clear(0.0f, 1.0f, 0.0f);
+
+  f.gl->glPixelStorei(GL_UNPACK_ALIGNMENT, 3); // GL_INVALID_VALUE (0x501), left raised
+  CHECK_EQ(7, f.ctx.compositeOverlay());
+
+  CHECK_EQ(std::string("255,0,0"), f.pixel(44, 44));
+  CHECK(f.gl->glGetError() == GL_NO_ERROR);
+  CHECK_EQ(1u, f.logger.count(RETRO_LOG_WARN, "0x501"));
+  CHECK_EQ(0u, f.logger.count(RETRO_LOG_ERROR, ""));
+
+  // an overlay-only frame with no overlay leaves none behind either
+  s_overlay.serial = 0;
+  f.gl->glPixelStorei(GL_UNPACK_ALIGNMENT, 3);
+  CHECK_EQ(0, f.ctx.drawOverlayOnly());
+  CHECK(f.gl->glGetError() == GL_NO_ERROR);
+  CHECK_EQ(0u, f.logger.count(RETRO_LOG_ERROR, ""));
+
+  // and the overlay is still on
+  s_overlay.serial = 8;
+  CHECK_EQ(8, f.ctx.compositeOverlay());
+}
+
+// Last in the file: without the check it guards, this test crashes, and a crash ends the run.
+TEST(QtOverlay_WithoutVertexArraysNothingIsDrawnOrTouched)
+{
+  // A context without vertex array objects (2.1 without GL_ARB_vertex_array_object). The overlay checks for them
+  // before any GL call: saving the state would query their binding (GL_INVALID_ENUM there, then a second ERROR) and
+  // restoring it would call a function Qt never resolved. One ERROR, nothing drawn, no state changed, and it is off.
+  Fixture f("QtOverlay_WithoutVertexArraysNothingIsDrawnOrTouched");
+  if (!f.ok)
+    return;
+  f.clear(0.0f, 1.0f, 0.0f);
+  f.ctx.pretendNoVertexArrays();
+
+  // state as someone else left it
+  f.gl->glActiveTexture(GL_TEXTURE3);
+  f.gl->glViewport(1, 2, 3, 4);
+  f.gl->glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
+
+  CHECK_EQ(0, f.ctx.compositeOverlay());
+
+  CHECK_EQ(1u, f.logger.count(RETRO_LOG_ERROR,
+                              "overlay: finding vertex array objects failed: the overlay is off for this session"));
+  CHECK_EQ(1u, f.logger.count(RETRO_LOG_ERROR, ""));
+  CHECK_EQ(0u, f.ctx.overlayUploads());
+  GLint value = -1, viewport[4] = {-1, -1, -1, -1};
+  f.gl->glGetIntegerv(GL_ACTIVE_TEXTURE, &value);
+  CHECK_EQ(GL_TEXTURE3, value);
+  f.gl->glGetIntegerv(GL_VIEWPORT, viewport);
+  CHECK(viewport[0] == 1 && viewport[1] == 2 && viewport[2] == 3 && viewport[3] == 4);
+  f.gl->glGetIntegerv(GL_UNPACK_ALIGNMENT, &value);
+  CHECK_EQ(2, value);
+  CHECK(f.gl->glIsEnabled(GL_BLEND) == GL_FALSE);
+  CHECK(f.gl->glGetError() == GL_NO_ERROR);
+  CHECK_EQ(std::string("0,255,0"), f.pixel(44, 44));
+  CHECK_EQ(std::string("0,255,0"), f.pixel(12, 12));
+
+  // off for the session: a present asks the source nothing and carries nothing
+  const int calls = s_overlay.calls;
+  f.ctx.swapBuffers();
+  CHECK_EQ(0, f.ctx.presentedOverlaySerial());
+  CHECK_EQ(calls, s_overlay.calls);
+  CHECK_EQ(1u, f.logger.count(RETRO_LOG_ERROR, ""));
 }

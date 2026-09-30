@@ -11,6 +11,8 @@
 #pragma GCC diagnostic pop
 
 class QOpenGLContext;
+class QOpenGLExtraFunctions;
+class QOpenGLFunctions;
 class QWindow;
 
 namespace host
@@ -56,7 +58,8 @@ namespace host
     void setOverlaySource(OverlaySource source);
 
     // The source's serial for the window as it is now, without drawing
-    // anything; while the window is unexposed or 0x0, the last present's.
+    // anything. While nothing can be presented (the window unexposed or 0x0)
+    // the source is not asked, and the answer is the last present's serial.
     int pollOverlay();
 
     // The serial of the overlay the last present carried; 0 for none.
@@ -74,6 +77,9 @@ namespace host
     int drawOverlayOnly();
     // How many times an overlay image has been uploaded.
     unsigned overlayUploads() const { return _overlayUploads; }
+    // For the tests, after init: act as on a context without vertex array
+    // objects (2.1 without GL_ARB_vertex_array_object).
+    void pretendNoVertexArrays() { _vertexArrays = false; }
 
   private:
     QOpenGLContext* createContext(QOpenGLContext* shareWith);
@@ -81,8 +87,11 @@ namespace host
 
     int fetchOverlay();         // calls the source; keeps the pixels until the next call
     bool drawFetchedOverlay(int serial); // RA context current
-    bool createOverlayObjects(); // RA context current; false (and compositing off) on a GL failure
-    void overlayFailed(const char* what);
+    // RA context current, with vertex array objects; false (and compositing off) on a GL failure
+    bool createOverlayObjects(QOpenGLExtraFunctions* vao);
+    void overlayFailed(const char* what, unsigned glError = 0); // logs once; compositing off
+    void clearStaleErrors(QOpenGLFunctions* gl); // before the overlay's first GL call
+    void makeCurrentAgain(QOpenGLContext* previous); // after a present that switched to the RA context
 
     libretro::LoggerComponent* _logger = nullptr;
     QWindow* _surface = nullptr;
@@ -110,7 +119,8 @@ namespace host
     int _uploadedSerial = 0;
     int _presentedSerial = 0;
     unsigned _overlayUploads = 0;
-    bool _overlayOff = false; // a GL failure: no overlay for the rest of the session
-    bool _loggedBadStride = false;
+    bool _vertexArrays = false; // the RA context has them: decided in init, before any overlay GL call
+    bool _overlayOff = false; // a GL failure or a bad stride: no overlay for the rest of the session
+    bool _loggedStaleError = false;
   };
 }

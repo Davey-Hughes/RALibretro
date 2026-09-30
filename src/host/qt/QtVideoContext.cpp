@@ -5,11 +5,11 @@
 #include <QOpenGLContext>
 #include <QOpenGLExtraFunctions>
 #include <QOpenGLFunctions>
+#include <QSize>
 #include <QSurfaceFormat>
 #include <QWindow>
 
 #include <cstddef>
-#include <cstdio>
 
 #define TAG "[CONTEXT] "
 
@@ -39,7 +39,9 @@ namespace
     "void main() { gl_FragColor = texture2D(u_tex, v_uv); }\n";
 
   // What compositing changes, saved before and put back after. Every piece of
-  // state drawFetchedOverlay touches is here.
+  // state drawFetchedOverlay touches is here. vao is the context's vertex
+  // array functions, nullptr where it has none: their binding is then neither
+  // queried (GL_INVALID_ENUM) nor set (Qt calls the function unchecked).
   struct SavedState
   {
     GLint framebuffer = 0;
@@ -56,7 +58,7 @@ namespace
     GLint unpackRowLength = 0;
     GLint unpackAlignment = 0;
 
-    void save(QOpenGLFunctions* gl)
+    void save(QOpenGLFunctions* gl, QOpenGLExtraFunctions* vao)
     {
       gl->glGetIntegerv(GL_FRAMEBUFFER_BINDING, &framebuffer);
       gl->glGetIntegerv(GL_VIEWPORT, viewport);
@@ -73,16 +75,18 @@ namespace
       gl->glActiveTexture(GL_TEXTURE0);
       gl->glGetIntegerv(GL_TEXTURE_BINDING_2D, &texture0);
       gl->glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &arrayBuffer);
-      gl->glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &vertexArray);
+      if (vao != nullptr)
+        gl->glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &vertexArray);
       gl->glGetIntegerv(GL_UNPACK_ROW_LENGTH, &unpackRowLength);
       gl->glGetIntegerv(GL_UNPACK_ALIGNMENT, &unpackAlignment);
     }
 
-    void restore(QOpenGLFunctions* gl, QOpenGLExtraFunctions* ex) const
+    void restore(QOpenGLFunctions* gl, QOpenGLExtraFunctions* vao) const
     {
       gl->glPixelStorei(GL_UNPACK_ALIGNMENT, unpackAlignment);
       gl->glPixelStorei(GL_UNPACK_ROW_LENGTH, unpackRowLength);
-      ex->glBindVertexArray(static_cast<GLuint>(vertexArray));
+      if (vao != nullptr)
+        vao->glBindVertexArray(static_cast<GLuint>(vertexArray));
       gl->glBindBuffer(GL_ARRAY_BUFFER, static_cast<GLuint>(arrayBuffer));
       gl->glActiveTexture(GL_TEXTURE0);
       gl->glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(texture0));
@@ -117,6 +121,26 @@ namespace
       return 0;
     }
     return shader;
+  }
+
+  // Reads every raised error flag, clearing it, and returns the first
+  // (GL_NO_ERROR for none). A context keeps at most one flag per error code,
+  // of which there are fewer than 16: the bound stops a broken context that
+  // keeps reporting.
+  GLenum takeErrors(QOpenGLFunctions* gl)
+  {
+    const GLenum first = gl->glGetError();
+    GLenum error = first;
+    for (int i = 1; i < 16 && error != GL_NO_ERROR; ++i)
+      error = gl->glGetError();
+    return first;
+  }
+
+  // The window's drawable in device pixels, as GlWindow reports it to Video.
+  QSize deviceSize(const QWindow* window)
+  {
+    const qreal scale = window->devicePixelRatio();
+    return QSize(qRound(window->width() * scale), qRound(window->height() * scale));
   }
 }
 
@@ -171,6 +195,9 @@ bool host::QtVideoContext::init(libretro::LoggerComponent* logger, QtHost& host)
   GLint alphaBits = 0;
   _raContext->functions()->glGetIntegerv(GL_ALPHA_BITS, &alphaBits);
   _hasAlpha = alphaBits > 0;
+  // decided before any overlay GL call: saving its state includes the binding
+  _vertexArrays = _raContext->format().version() >= qMakePair(3, 0) ||
+                  _raContext->hasExtension("GL_ARB_vertex_array_object");
   _logger->info(TAG "OpenGL %s, contexts share: %d, alpha bits: %d (asked for %d)",
                 version != nullptr ? version : "(unknown)",
                 QOpenGLContext::areSharing(_raContext, _coreContext) ? 1 : 0, static_cast<int>(alphaBits),
@@ -191,6 +218,7 @@ void host::QtVideoContext::destroy()
   _overlayProgram = _overlayTexture = _overlayBuffer = _overlayVertexArray = 0;
   _overlayTextureWidth = _overlayTextureHeight = 0;
   _uploadedSerial = _presentedSerial = 0;
+  _vertexArrays = false;
 }
 
 bool host::QtVideoContext::ready(const char* caller)
@@ -279,8 +307,8 @@ void host::QtVideoContext::swapBuffers()
     makeOpaque();
   _raContext->swapBuffers(_surface);
 
-  if (switched && previous != nullptr)
-    previous->makeCurrent(_surface);
+  if (switched)
+    makeCurrentAgain(previous);
 }
 
 void host::QtVideoContext::makeOpaque()
@@ -324,7 +352,10 @@ void host::QtVideoContext::setOverlaySource(OverlaySource source)
 
 int host::QtVideoContext::pollOverlay()
 {
-  if (!_ready || !_surface->isExposed())
+  // Nothing can be presented unexposed or at 0x0, and the source is never
+  // asked for a size <= 0: the last present's serial, so the paused loop sees
+  // no change and presents nothing.
+  if (!_ready || !_surface->isExposed() || deviceSize(_surface).isEmpty())
     return _presentedSerial;
 
   const int serial = fetchOverlay();
@@ -338,26 +369,25 @@ int host::QtVideoContext::fetchOverlay()
   if (_overlaySource == nullptr || _overlayOff)
     return 0;
 
-  // the window's device pixels, as GlWindow reports them to Video
-  const qreal scale = _surface->devicePixelRatio();
-  const int width = qRound(_surface->width() * scale);
-  const int height = qRound(_surface->height() * scale);
-  if (width <= 0 || height <= 0)
+  const QSize size = deviceSize(_surface);
+  if (size.isEmpty())
     return 0;
+  const int width = size.width();
+  const int height = size.height();
 
   const void* pixels = nullptr;
   int stride = 0;
-  const int serial = _overlaySource(width, height, static_cast<float>(scale), &pixels, &stride);
+  const int serial =
+    _overlaySource(width, height, static_cast<float>(_surface->devicePixelRatio()), &pixels, &stride);
   if (serial == 0 || pixels == nullptr)
     return 0;
 
   if (stride < width * 4 || stride % 4 != 0)
   {
-    if (!_loggedBadStride)
-    {
-      _logger->error(TAG "overlay: %d bytes per row for %d pixels: not drawn", stride, width);
-      _loggedBadStride = true;
-    }
+    // a source that breaks the contract once does it every time
+    _logger->error(TAG "overlay: %d bytes per row for %d pixels: the overlay is off for this session", stride,
+                   width);
+    _overlayOff = true;
     return 0;
   }
 
@@ -385,8 +415,10 @@ int host::QtVideoContext::drawOverlayOnly()
   if (!_ready || context != _raContext)
     return 0;
 
-  // black, where the game's picture would be
   QOpenGLFunctions* gl = context->functions();
+  clearStaleErrors(gl);
+
+  // black, where the game's picture would be
   GLfloat colour[4] = {0.0f, 0.0f, 0.0f, 0.0f};
   GLint bound = 0;
   gl->glGetFloatv(GL_COLOR_CLEAR_VALUE, colour);
@@ -402,6 +434,15 @@ int host::QtVideoContext::drawOverlayOnly()
     gl->glEnable(GL_SCISSOR_TEST);
   gl->glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(bound));
 
+  // Whatever the serial, no error may be left for Gl (Gl.cpp), which stops
+  // drawing at the first it sees: the clear's are checked here, and
+  // compositing checks its own.
+  const GLenum error = takeErrors(gl);
+  if (error != GL_NO_ERROR)
+  {
+    overlayFailed("clearing to black", error);
+    return 0;
+  }
   return compositeOverlay();
 }
 
@@ -422,30 +463,48 @@ void host::QtVideoContext::presentOverlayOnly()
     makeOpaque();
   _raContext->swapBuffers(_surface);
 
-  if (previous != nullptr && previous != _raContext)
-    previous->makeCurrent(_surface);
+  makeCurrentAgain(previous);
 }
 
-void host::QtVideoContext::overlayFailed(const char* what)
+void host::QtVideoContext::overlayFailed(const char* what, unsigned glError)
 {
-  _logger->error(TAG "overlay: %s failed: the overlay is off for this session", what);
+  if (_overlayOff) // the first failure was logged, and switched it off
+    return;
+  if (glError != 0)
+    _logger->error(TAG "overlay: %s (OpenGL error 0x%X) failed: the overlay is off for this session", what, glError);
+  else
+    _logger->error(TAG "overlay: %s failed: the overlay is off for this session", what);
   _overlayOff = true;
 }
 
-bool host::QtVideoContext::createOverlayObjects()
+void host::QtVideoContext::clearStaleErrors(QOpenGLFunctions* gl)
+{
+  // Raised before the overlay's first call, so someone else's: cleared, so the
+  // check after its own calls sees only theirs and never switches the overlay
+  // off for another's error.
+  const GLenum error = takeErrors(gl);
+  if (error != GL_NO_ERROR && !_loggedStaleError)
+  {
+    _logger->warn(TAG "overlay: OpenGL error 0x%X was raised before it drew, not by it: cleared (logged once)",
+                  static_cast<unsigned>(error));
+    _loggedStaleError = true;
+  }
+}
+
+void host::QtVideoContext::makeCurrentAgain(QOpenGLContext* previous)
+{
+  if (previous == nullptr || previous == _raContext)
+    return;
+  if (!previous->makeCurrent(_surface))
+    _logger->error(TAG "makeCurrent(%s) failed", previous == _coreContext ? "core" : "previous");
+}
+
+bool host::QtVideoContext::createOverlayObjects(QOpenGLExtraFunctions* vao)
 {
   if (_overlayProgram != 0)
     return true;
 
-  QOpenGLContext* context = _raContext;
-  QOpenGLFunctions* gl = context->functions();
-  QOpenGLExtraFunctions* ex = context->extraFunctions();
-  if (context->format().version() < qMakePair(3, 0) && !context->hasExtension("GL_ARB_vertex_array_object"))
-  {
-    overlayFailed("finding vertex array objects");
-    return false;
-  }
-
+  QOpenGLFunctions* gl = _raContext->functions();
   const GLuint vertexShader = compileShader(gl, GL_VERTEX_SHADER, kOverlayVertexShader);
   const GLuint fragmentShader = compileShader(gl, GL_FRAGMENT_SHADER, kOverlayFragmentShader);
   if (vertexShader == 0 || fragmentShader == 0)
@@ -482,8 +541,8 @@ bool host::QtVideoContext::createOverlayObjects()
   gl->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
   gl->glGenBuffers(1, &buffer);
-  ex->glGenVertexArrays(1, &vertexArray);
-  ex->glBindVertexArray(vertexArray);
+  vao->glGenVertexArrays(1, &vertexArray);
+  vao->glBindVertexArray(vertexArray);
   gl->glBindBuffer(GL_ARRAY_BUFFER, buffer);
   gl->glBufferData(GL_ARRAY_BUFFER, sizeof(kOverlayQuad), kOverlayQuad, GL_STATIC_DRAW);
   gl->glEnableVertexAttribArray(0);
@@ -506,13 +565,25 @@ bool host::QtVideoContext::drawFetchedOverlay(int serial)
   if (context != _raContext || _overlayPixels == nullptr)
     return false;
 
+  // Before any GL call: the saved state includes the vertex array binding,
+  // and the draw needs vertex arrays. vao is null where the context has none.
+  QOpenGLExtraFunctions* vao = _vertexArrays ? context->extraFunctions() : nullptr;
+  if (vao == nullptr)
+  {
+    overlayFailed("finding vertex array objects");
+    return false;
+  }
+
   QOpenGLFunctions* gl = context->functions();
-  QOpenGLExtraFunctions* ex = context->extraFunctions();
+  clearStaleErrors(gl);
+  // Relied on, not forced (RALibretro's RA context never sets them): one framebuffer bound for reading and drawing
+  // (the restore binds the saved one to both), no GL_PIXEL_UNPACK_BUFFER, UNPACK_SKIP_ROWS and SKIP_PIXELS 0, and a
+  // full colour mask.
   SavedState saved;
-  saved.save(gl); // before anything, making the objects included
+  saved.save(gl, vao); // before anything, making the objects included
 
   bool drawn = false;
-  if (createOverlayObjects())
+  if (createOverlayObjects(vao))
   {
     gl->glBindFramebuffer(GL_FRAMEBUFFER, context->defaultFramebufferObject());
     gl->glDisable(GL_SCISSOR_TEST);
@@ -543,7 +614,7 @@ bool host::QtVideoContext::drawFetchedOverlay(int serial)
 
     gl->glUseProgram(_overlayProgram);
     gl->glUniform1i(_overlayTexUniform, 0);
-    ex->glBindVertexArray(_overlayVertexArray);
+    vao->glBindVertexArray(_overlayVertexArray);
     gl->glEnable(GL_BLEND);
     gl->glBlendEquation(GL_FUNC_ADD);
     gl->glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // premultiplied over
@@ -551,18 +622,15 @@ bool host::QtVideoContext::drawFetchedOverlay(int serial)
     drawn = true;
   }
 
-  saved.restore(gl, ex);
+  saved.restore(gl, vao);
 
   // Gl (Gl.cpp) checks the error flag after each of its calls and stops
   // drawing at the first error it sees: none of this may be left for it.
-  const GLenum error = gl->glGetError();
+  // Errors raised before were cleared above, so any here is the overlay's.
+  const GLenum error = takeErrors(gl);
   if (error != GL_NO_ERROR)
   {
-    while (gl->glGetError() != GL_NO_ERROR)
-      ;
-    char what[64];
-    std::snprintf(what, sizeof(what), "drawing (OpenGL error 0x%X)", static_cast<unsigned>(error));
-    overlayFailed(what);
+    overlayFailed("drawing", error);
     return false;
   }
 
