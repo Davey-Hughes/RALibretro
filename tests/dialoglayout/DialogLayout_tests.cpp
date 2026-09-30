@@ -104,6 +104,24 @@ TEST(DialogLayout_TheThreeCallSitesAreCaptured)
   CHECK_EQ(-2, specs[1].controls.size() > 1 ? specs[1].controls[1].y : 0);
 }
 
+// Saving Settings' path options name the folders States builds, with the separator it builds them with: '/' here
+TEST(DialogLayout_SavingPathOptionsUseForwardSlashes)
+{
+  const auto specs = dialoglayout::captureRealDialogs();
+  CHECK_EQ(size_t{3}, specs.size());
+  if (specs.size() != 3)
+    return;
+  std::vector<std::string> options;
+  for (const auto& control : specs[2].controls)
+    if (control.kind == Kind::Combobox)
+      options.insert(options.end(), control.options.begin(), control.options.end());
+  CHECK(!options.empty());
+  for (const auto& option : options)
+    if (option.find('\\') != std::string::npos)
+      menutests::fail(__FILE__, __LINE__, "Saving Settings option \"" + option + "\" has a backslash");
+  CHECK(std::find(options.begin(), options.end(), "Saves/[System]/[Core]") != options.end());
+}
+
 TEST(DialogLayout_TheThreeDialogsLayOutCleanly)
 {
   const char* shots = std::getenv("RALIBRETRO_DIALOG_SHOTS"); // a directory for the owner to look at

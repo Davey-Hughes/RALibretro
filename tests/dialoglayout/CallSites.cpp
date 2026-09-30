@@ -1,5 +1,6 @@
-// The fakes the three builder dialogs link against in ralibretro_dialog_layout_tests, and the capture. Compiled as
-// the application compiles its sources (native_compat.h force-included), so it names no Qt type.
+// The fakes the three builder dialogs link against in ralibretro_dialog_layout_tests, the capture, and the save
+// paths States builds. Compiled as the application compiles its sources (native_compat.h force-included), so it
+// names no Qt type.
 
 #include "CallSites.h"
 
@@ -19,6 +20,7 @@
 
 #include "rc_libretro.h"
 #include <RA_Interface.h>
+#include <rcheevos/include/rc_consoles.h>
 
 namespace
 {
@@ -69,7 +71,8 @@ bool libretro::Core::serialize(void*, size_t) { return false; }
 // compiled whole into ralibretro_dialog_callsites, so the linker wants every symbol they reference, even
 // ones the Cancel path this capture walks never reaches. src/Util.cpp is not part of that target (it also
 // defines util::toPng/fromRgb/fromPng, which would collide with the fakes above), so its other functions
-// need fakes too.
+// need fakes too. buildSavePaths below does call fileName and sanitizeFileName: for the names it passes (no
+// directory, and none of the characters sanitizeFileName replaces) each gives what Util.cpp's gives.
 
 HWND g_mainWindow = nullptr;
 
@@ -78,8 +81,8 @@ void* util::loadFile(Logger*, const std::string&, size_t*) { return nullptr; }
 bool util::saveFile(Logger*, const std::string&, const void*, size_t) { return false; }
 std::string util::jsonEscape(const std::string&) { return std::string(); }
 std::string util::jsonUnescape(const std::string&) { return std::string(); }
-std::string util::fileName(const std::string&) { return std::string(); }
-std::string util::sanitizeFileName(const std::string&) { return std::string(); }
+std::string util::fileName(const std::string& path) { return path.substr(0, path.find_last_of('.')); }
+std::string util::sanitizeFileName(const std::string& name) { return name; }
 std::string util::directory(const std::string&) { return std::string(); }
 void util::ensureDirectoryExists(const std::string&) {}
 void util::deleteFile(const std::string&) {}
@@ -104,4 +107,28 @@ std::vector<host::DialogSpec> dialoglayout::captureRealDialogs()
   states.showDialog();
 
   return s_captured;
+}
+
+namespace
+{
+  // All States::buildPath asks of a core is getSystemInfo()->library_name. getSystemInfo() is inline in Core.h,
+  // and _systemInfo is protected, so a subclass fills it in.
+  struct NamedCore : libretro::Core
+  {
+    explicit NamedCore(const char* libraryName) : libretro::Core() { _systemInfo.library_name = libraryName; }
+  };
+}
+
+dialoglayout::SavePaths dialoglayout::buildSavePaths(const char* settingsJson)
+{
+  Config config{};
+  config.initRootFolder(); // as Application::init does: the executable's folder. It creates nothing.
+
+  NamedCore core("FCEUmm");
+  States states{};
+  states.init(nullptr, &config, nullptr); // no Logger or Video: building a path uses neither
+  states.deserializeSettings(settingsJson);
+  states.setGame("Donkey Kong (World) (Rev 1).nes", RC_CONSOLE_NINTENDO, "fceumm_libretro", &core);
+
+  return SavePaths{config.getRootFolder(), states.getSRamPath(), states.getStatePath(1)};
 }

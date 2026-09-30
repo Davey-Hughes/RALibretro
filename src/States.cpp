@@ -48,6 +48,18 @@ along with RALibRetro.  If not, see <http://www.gnu.org/licenses/>.
 #include <assert.h>
 #include <time.h>
 
+#ifndef RA_DIR_SEP
+ #ifdef _WIN32
+  #define RA_DIR_SEP "\\"
+  #define RA_DIR_SEP_CHAR '\\'
+  #define RA_CORE_EXT ".dll"
+ #else
+  #define RA_DIR_SEP "/"
+  #define RA_DIR_SEP_CHAR '/'
+  #define RA_CORE_EXT ".so"
+ #endif
+#endif
+
 #define TAG "[SAV] "
 
 #define RASTATE_VERSION 1
@@ -90,24 +102,24 @@ std::string States::buildPath(Path path) const
   std::string savePath = _config->getRootFolder();
 
   if (path & Path::State)
-    savePath += "States\\";
+    savePath += "States" RA_DIR_SEP;
   else
-    savePath += "Saves\\";
+    savePath += "Saves" RA_DIR_SEP;
 
   if ((path & Path::System) && _system)
   {
     savePath += util::sanitizeFileName(rc_console_name(_system));
-    savePath += '\\';
+    savePath += RA_DIR_SEP_CHAR;
   }
 
   if ((path & Path::Core) && _core->getSystemInfo()->library_name)
   {
     savePath += util::sanitizeFileName(_core->getSystemInfo()->library_name);
-    savePath += '\\';
+    savePath += RA_DIR_SEP_CHAR;
   }
 
   if ((path & Path::Game) && !_gameFileName.empty())
-    savePath += util::fileName(_gameFileName) + "\\";
+    savePath += util::fileName(_gameFileName) + RA_DIR_SEP;
 
   return savePath;
 }
@@ -901,11 +913,11 @@ public:
           option = "Saves";
 
         if (i & States::Path::System)
-          option += "\\[System]";
+          option += RA_DIR_SEP "[System]";
         if (i & States::Path::Core)
-          option += "\\[Core]";
+          option += RA_DIR_SEP "[Core]";
         if (i & States::Path::Game)
-          option += "\\[Game]";
+          option += RA_DIR_SEP "[Game]";
       }
 
       _intervalOptions[0] = "None";

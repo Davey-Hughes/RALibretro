@@ -184,7 +184,8 @@ add_test(NAME dialog COMMAND ralibretro_dialog_tests)
 # --- the three builder dialogs, from their real call sites ------------------------
 # Video::showDialog, Config::showEmulatorSettingsDialog and States::showDialog compiled as the application compiles
 # them, and linked against fakes (tests/dialoglayout/CallSites.cpp) in place of the Qt host, the RetroAchievements
-# library and the core. The specs they hand host::runDialog are rendered by the real presenter and checked.
+# library and the core. The specs they hand host::runDialog are rendered by the real presenter and checked. States'
+# save paths are built against the same fakes and checked too (tests/dialoglayout/SavePaths_tests.cpp).
 add_library(ralibretro_dialog_callsites STATIC
   src/components/Video.cpp
   src/components/Config.cpp
@@ -209,6 +210,7 @@ set_source_files_properties(tests/dialoglayout/CallSites.cpp PROPERTIES COMPILE_
 add_executable(ralibretro_dialog_layout_tests
   tests/dialoglayout/main.cpp
   tests/dialoglayout/DialogLayout_tests.cpp
+  tests/dialoglayout/SavePaths_tests.cpp
   tests/menu/Runner.cpp
   src/host/qt/QtDialog.cpp
 )
