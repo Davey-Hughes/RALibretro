@@ -166,7 +166,6 @@ menu::HostMenuState Application::hostMenuState()
     state.systems.push_back(std::move(entry));
   }
 
-  state.backgroundInput = _config.getBackgroundInput();
   state.turbo = _turboSelected;
   return state;
 }

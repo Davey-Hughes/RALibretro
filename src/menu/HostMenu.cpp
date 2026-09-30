@@ -163,13 +163,17 @@ menu::Menu menu::buildFileMenu(const HostMenuState& state)
   return file;
 }
 
-menu::Menu menu::buildSettingsMenu(const HostMenuState& state)
+// Nothing in the Settings menu depends on the snapshot now; the parameter keeps the HostMenuSource::Builder shape.
+menu::Menu menu::buildSettingsMenu(const HostMenuState&)
 {
   Menu settings;
   settings.title = "Settings";
 
   MenuItem input = submenu("Input");
-  input.children.push_back(item("Background Input", IDM_INPUT_BACKGROUND_INPUT, true, state.backgroundInput));
+  // SDL drops controller events only while it has windows of its own and none has focus (SDL_joystick.c,
+  // SDL_PrivateJoystickShouldIgnoreEvent). Under the Qt host SDL has no windows, so controllers always reach
+  // the game and the setting changes nothing: shown ticked and greyed, saying so.
+  input.children.push_back(item("Background Input (always on under Linux)", IDM_INPUT_BACKGROUND_INPUT, false, true));
   settings.items.push_back(std::move(input));
 
   // the dialog builder's dialogs (components/DialogNative.cpp); not in MenuItems.h's tables, so always enabled

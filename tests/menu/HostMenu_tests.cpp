@@ -254,15 +254,17 @@ TEST(HostMenu_TurboIsCheckedWhileSelected)
 TEST(HostMenu_SettingsMenu)
 {
   menu::HostMenuState state;
-  state.backgroundInput = true;
   const menu::Menu settings = menu::buildSettingsMenu(state);
   CHECK_EQ(std::string("Settings"), settings.title);
+  // SDL only drops controller events while it has windows of its own and none has focus; the Qt host's SDL has
+  // none, so controllers always reach the game and the setting has no effect: shown ticked and greyed, saying so
   const menu::MenuItem* background = find(settings.items, IDM_INPUT_BACKGROUND_INPUT);
   CHECK(background != nullptr);
   if (background != nullptr)
   {
+    CHECK_EQ(std::string("Background Input (always on under Linux)"), background->label);
     CHECK(background->checked);
-    CHECK(background->enabled);
+    CHECK(!background->enabled);
   }
   CHECK(find(settings.items, IDM_WINDOW_1X) != nullptr);
   CHECK(find(settings.items, IDM_WINDOW_5X) != nullptr);

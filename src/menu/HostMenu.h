@@ -48,7 +48,6 @@ namespace menu
     };
     std::vector<System> systems;
 
-    bool backgroundInput = false;
     bool turbo = false; // the fast-forward selection: File > Turbo's check mark
   };
 
