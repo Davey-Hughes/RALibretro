@@ -1,7 +1,14 @@
 #include "../menu/Check.h"
 
 #include "host/HostServices.h"
+#include "host/IHostEvents.h"
 #include "host/qt/QtDialog.h"
+#include "host/qt/QtHost.h"
+// Components.h:85, the NDEBUG debug() stub, leaves its 'fmt' parameter unused
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#include "libretro/Components.h"
+#pragma GCC diagnostic pop
 
 #include <QApplication>
 #include <QCheckBox>
@@ -20,6 +27,7 @@
 #include <cstdlib>
 #include <functional>
 #include <memory>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -97,6 +105,31 @@ namespace
         ++dialogsShown;
       return false;
     }
+  };
+
+  // The logger runDialog reports to once a host is up. LoggerComponent's one pure virtual is
+  // log(level, line, length); QtHost_tests.cpp has the same fake, but file-local to that translation unit.
+  class TestLogger : public libretro::LoggerComponent
+  {
+  public:
+    std::vector<std::string> lines;
+
+    void log(enum retro_log_level, const char* line, size_t length) override
+    {
+      lines.emplace_back(line, length);
+    }
+  };
+
+  // A do-nothing IHostEvents: QtHost::create needs one, but these tests never trigger any of it.
+  struct NoEvents : host::IHostEvents
+  {
+    void onKey(SDL_Keycode, Uint16, bool, bool) override {}
+    void onMouseMove(int, int) override {}
+    void onMouseButton(host::MouseButton, bool) override {}
+    void onResized(int, int) override {}
+    void onCloseRequested() override {}
+    void onMenuCommand(size_t, int) override {}
+    void onAbout() override {}
   };
 }
 
@@ -265,12 +298,22 @@ TEST(QtDialog_RunDialogAutoDismissedShowsNothing)
   auto spec = emulatorLike();
   ShowCounter counter;
   qApp->installEventFilter(&counter);
+  TestLogger logger;
+  NoEvents events;
+  host::QtHost host(&logger, events);
+  CHECK(host.create("test", 64, 64));
+  const size_t linesBefore = logger.lines.size();
+
   setenv("RALIBRETRO_AUTO_DISMISS_BOXES", "1", 1);
   const bool answer = host::runDialog(spec);
   unsetenv("RALIBRETRO_AUTO_DISMISS_BOXES");
   qApp->removeEventFilter(&counter);
   CHECK(!answer);
   CHECK_EQ(0, counter.dialogsShown);
+
+  CHECK_EQ(linesBefore + 1, logger.lines.size());
+  if (logger.lines.size() == linesBefore + 1)
+    CHECK_EQ(std::string("[QT] dialog auto-dismissed: Emulator Settings"), logger.lines.back());
 }
 
 TEST(QtDialog_RunDialogOffTheGuiThreadIsRefused)
@@ -278,10 +321,82 @@ TEST(QtDialog_RunDialogOffTheGuiThreadIsRefused)
   auto spec = emulatorLike();
   ShowCounter counter;
   qApp->installEventFilter(&counter);
+  TestLogger logger;
+  NoEvents events;
+  host::QtHost host(&logger, events);
+  CHECK(host.create("test", 64, 64));
+  const size_t linesBefore = logger.lines.size();
+
   bool answer = true;
   std::thread worker([&spec, &answer]() { answer = host::runDialog(spec); });
   worker.join();
   qApp->removeEventFilter(&counter);
   CHECK(!answer);
   CHECK_EQ(0, counter.dialogsShown);
+
+  CHECK_EQ(linesBefore + 1, logger.lines.size());
+  if (logger.lines.size() == linesBefore + 1)
+  {
+    const std::string& line = logger.lines.back();
+    CHECK(line.find("Emulator Settings") != std::string::npos);
+    CHECK(line.find("off the GUI thread") != std::string::npos); // refusedOffGuiThread's own wording
+  }
+}
+
+TEST(QtDialog_ComboBoxesWithNoSelectionReadBackMinusOne)
+{
+  // Win32's CB_GETCURSEL returns -1 for "nothing selected"; Qt's setCurrentIndex clamps any out-of-range
+  // index (negative, or past the last option) to the same -1, so all three read back that way.
+  host::DialogSpec spec;
+  spec.title = "Combos";
+  auto none = control(Kind::Combobox, 1, 0, 0, 100, 12);
+  none.options = {"one", "two"};
+  none.selected = -1;
+  spec.controls.push_back(none);
+  auto negative = control(Kind::Combobox, 2, 0, 20, 100, 12);
+  negative.options = {"one", "two"};
+  negative.selected = -2;
+  spec.controls.push_back(negative);
+  auto tooFar = control(Kind::Combobox, 3, 0, 40, 100, 12);
+  tooFar.options = {"one", "two"};
+  tooFar.selected = 99;
+  spec.controls.push_back(tooFar);
+
+  std::unique_ptr<QDialog> dialog(host::detail::buildDialog(spec, nullptr));
+  host::detail::readDialogAnswers(*dialog, spec);
+  CHECK_EQ(-1, spec.controls[0].selected);
+  CHECK_EQ(-1, spec.controls[1].selected);
+  CHECK_EQ(-1, spec.controls[2].selected);
+}
+
+TEST(QtDialog_EditBoxesReadBackWhatTheUserTyped)
+{
+  host::DialogSpec spec;
+  spec.title = "Edits";
+  auto line = control(Kind::Editbox, 10, 0, 0, 100, 12);
+  line.text = "one line";
+  spec.controls.push_back(line);
+  auto multi = control(Kind::Editbox, 11, 0, 20, 100, 12);
+  multi.text = "first\nsecond";
+  multi.lines = 3;
+  spec.controls.push_back(multi);
+
+  std::unique_ptr<QDialog> dialog(host::detail::buildDialog(spec, nullptr));
+  widget<QLineEdit>(*dialog, 0)->setText(QStringLiteral("changed"));
+  widget<QPlainTextEdit>(*dialog, 1)->setPlainText(QStringLiteral("new\ntext"));
+
+  host::detail::readDialogAnswers(*dialog, spec);
+  CHECK_EQ(std::string("changed"), spec.controls[0].text);
+  CHECK_EQ(std::string("new\ntext"), spec.controls[1].text);
+}
+
+TEST(QtDialog_EnterAcceptsTheDefaultButton)
+{
+  // Win32's Dialog: pressing Enter clicks whichever button is the default, same as clicking it.
+  auto spec = emulatorLike();
+  std::unique_ptr<QDialog> dialog(host::detail::buildDialog(spec, nullptr));
+  QSignalSpy accepted(dialog.get(), &QDialog::accepted);
+  dialog->show();
+  QTest::keyClick(dialog.get(), Qt::Key_Return);
+  CHECK_EQ(1, int(accepted.count()));
 }

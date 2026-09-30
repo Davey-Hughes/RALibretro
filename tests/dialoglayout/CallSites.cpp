@@ -3,7 +3,10 @@
 
 #include "CallSites.h"
 
-// Dialog.h's default dialogProc leaves its parameters unused (Windows-visible); the warning stops here.
+// Wraps two headers, not just Config.h's own: Dialog.h's default dialogProc leaves its parameters unused
+// (Windows-visible), and Config.h's own include chain, through Input.h:22, first pulls in
+// libretro/Components.h, whose NDEBUG debug() stub (line 85) leaves 'fmt' unused too. Keep the wrap around
+// this include; narrowing it to just Dialog.h lets the Components.h warning back in under -DNDEBUG.
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #include "components/Config.h"
@@ -62,10 +65,11 @@ size_t libretro::Core::getMemorySize(unsigned) { return 0; }
 size_t libretro::Core::serializeSize() { return 0; }
 bool libretro::Core::serialize(void*, size_t) { return false; }
 
-// ---- extra stubs beyond the brief's list: linked in from States.cpp and Config.cpp on this branch's HEAD, not
-// present in the plan's measured closure (see the task report's "extra stubs" section for the undefined-symbol
-// lines that required each one). src/Util.cpp is not part of ralibretro_dialog_callsites (it also defines
-// util::toPng/fromRgb/fromPng, which would collide with the fakes above), so its other functions need fakes too.
+// ---- extra stubs: whole-object link artifacts, not calls the capture makes. States.cpp and Config.cpp are
+// compiled whole into ralibretro_dialog_callsites, so the linker wants every symbol they reference, even
+// ones the Cancel path this capture walks never reaches. src/Util.cpp is not part of that target (it also
+// defines util::toPng/fromRgb/fromPng, which would collide with the fakes above), so its other functions
+// need fakes too.
 
 HWND g_mainWindow = nullptr;
 
@@ -90,6 +94,10 @@ std::vector<host::DialogSpec> dialoglayout::captureRealDialogs()
   video.showDialog();
 
   Config config{}; // no user constructor: value-initialised. Config::init would create folders and chdir.
+  // Real values: config{} above leaves _fastForwardRatio at 0, so the combo box would read back
+  // selected = -2 and render blank. Set what a real settings file would hold instead.
+  config.deserializeEmulatorSettings(
+      "{\"fastForwardRatio\":5,\"audioWhileFastForwarding\":true,\"showSpeedIndicator\":true}");
   config.showEmulatorSettingsDialog();
 
   States states{}; // no game loaded, so the dialog opens instead of refusing
