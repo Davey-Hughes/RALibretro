@@ -267,8 +267,23 @@ TEST(HostMenu_SettingsMenu)
   CHECK(find(settings.items, IDM_WINDOW_1X) != nullptr);
   CHECK(find(settings.items, IDM_WINDOW_5X) != nullptr);
   CHECK(enabled(settings, IDM_WINDOW_3X));
+
+  // the dialog builder's three dialogs, always enabled and in menu.rc's order: Input, Emulator, Saving, Video,
+  // Window Size
+  std::vector<int> ids;
+  for (const auto& entry : settings.items)
+    ids.push_back(entry.children.empty() ? entry.id : entry.children.front().id);
+  CHECK(ids == (std::vector<int>{IDM_INPUT_BACKGROUND_INPUT, IDM_EMULATOR_CONFIG, IDM_SAVING_CONFIG, IDM_VIDEO_CONFIG,
+                                 IDM_WINDOW_1X}));
+  CHECK(enabled(settings, IDM_EMULATOR_CONFIG));
+  CHECK(enabled(settings, IDM_SAVING_CONFIG));
+  CHECK(enabled(settings, IDM_VIDEO_CONFIG));
+
+  // the custom dialogs are not ported yet (R2)
+  CHECK(find(settings.items, IDM_CORE_CONFIG) == nullptr);
   CHECK(find(settings.items, IDM_INPUT_CONFIG) == nullptr);
-  CHECK(find(settings.items, IDM_VIDEO_CONFIG) == nullptr);
+  CHECK(find(settings.items, IDM_INPUT_CONTROLLER_1) == nullptr);
+  CHECK(find(settings.items, IDM_MANAGE_CORES) == nullptr);
 }
 
 TEST(HostMenu_EscapeMnemonics)

@@ -55,8 +55,9 @@ namespace menu
   // "&" -> "&&", so a file name is not read as a mnemonic (enableRecent does the same).
   std::string escapeMnemonics(const std::string& text);
 
-  // menu.rc's File and Settings menus minus the Win32 config dialogs and
-  // Manage Cores. Enabled flags come from MenuItems.h and the rules in
+  // menu.rc's File and Settings menus minus Core Settings, Hot Keys,
+  // Controllers 1-4 and Manage Cores, whose custom Win32 dialogs are not
+  // ported yet. Enabled flags come from MenuItems.h and the rules in
   // enableSlots, enableRecent and updateDiscMenu.
   Menu buildFileMenu(const HostMenuState& state);
   Menu buildSettingsMenu(const HostMenuState& state);

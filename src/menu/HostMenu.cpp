@@ -172,6 +172,11 @@ menu::Menu menu::buildSettingsMenu(const HostMenuState& state)
   input.children.push_back(item("Background Input", IDM_INPUT_BACKGROUND_INPUT, true, state.backgroundInput));
   settings.items.push_back(std::move(input));
 
+  // the dialog builder's dialogs (components/DialogNative.cpp); not in MenuItems.h's tables, so always enabled
+  settings.items.push_back(item("Emulator...", IDM_EMULATOR_CONFIG));
+  settings.items.push_back(item("Saving...", IDM_SAVING_CONFIG));
+  settings.items.push_back(item("Video...", IDM_VIDEO_CONFIG));
+
   MenuItem windowSize = submenu("Window Size");
   for (unsigned n = 1; n <= 5; ++n)
     windowSize.children.push_back(item("Resize to " + std::to_string(n) + "x", IDM_WINDOW_1X + n - 1));
