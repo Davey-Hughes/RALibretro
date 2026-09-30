@@ -125,6 +125,8 @@ QDialog* host::detail::buildDialog(const DialogSpec& spec, QWidget* parent, int 
 
   auto* form = new QFormLayout(dialog);
   form->setSizeConstraint(QLayout::SetFixedSize); // Windows' modal frame: the dialog is not resized
+  // labels on the left, as in Windows' dialogs, whatever the style says (KDE's puts a form's on the right)
+  form->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
   std::vector<QWidget*> widgets(spec.controls.size(), nullptr);
   for (size_t index = 0; index < spec.controls.size(); ++index)

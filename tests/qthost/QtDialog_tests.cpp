@@ -19,6 +19,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPlainTextEdit>
+#include <QProxyStyle>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QTimer>
@@ -93,6 +94,19 @@ namespace
           any->reject();
     });
   }
+
+  // What KDE's Breeze answers, and so what a form that does not choose gets there: labels right aligned. Set on a
+  // dialog before it is first shown: QFormLayout caches the style's answer on first use.
+  struct RightAligningStyle : QProxyStyle
+  {
+    int styleHint(StyleHint hint, const QStyleOption* option, const QWidget* widget,
+                  QStyleHintReturn* returnData) const override
+    {
+      if (hint == QStyle::SH_FormLayoutLabelAlignment)
+        return static_cast<int>(Qt::AlignRight | Qt::AlignVCenter);
+      return QProxyStyle::styleHint(hint, option, widget, returnData);
+    }
+  };
 
   // Counts dialogs shown while it is installed on the application.
   struct ShowCounter : QObject
@@ -200,6 +214,18 @@ TEST(QtDialog_ALabelAndItsFieldShareAFormRow)
   CHECK_EQ(labelRow, fieldRow);
   CHECK(labelRole == QFormLayout::LabelRole);
   CHECK(fieldRole == QFormLayout::FieldRole);
+}
+
+// Windows' dialogs have their labels on the left; KDE's style would put a form's on the right.
+TEST(QtDialog_LabelsAreOnTheLeftWhateverTheStyle)
+{
+  RightAligningStyle style;
+  std::unique_ptr<QDialog> dialog(host::detail::buildDialog(emulatorLike(), nullptr));
+  dialog->setStyle(&style);
+  auto* form = qobject_cast<QFormLayout*>(dialog->layout());
+  CHECK(form != nullptr);
+  if (form != nullptr)
+    CHECK_EQ(static_cast<int>(Qt::AlignLeft), static_cast<int>(form->labelAlignment() & Qt::AlignHorizontal_Mask));
 }
 
 TEST(QtDialog_EditBoxesAndOtherButtons)
