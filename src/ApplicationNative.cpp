@@ -19,6 +19,7 @@
 #include "menu/HostMenu.h"
 #include "menu/RAMenuSource.h"
 #include "components/DialogNative.h"
+#include "OverlayPresent.h"
 
 #include "resource.h"
 #include "Emulator.h"
@@ -183,6 +184,33 @@ void Application::createMenuBar()
   // RetroAchievements (it appends RA's menu to a bar that ends with About);
   // here About is last, where a menu bar's help and about entries go.
   _host->buildMenuBar(_menuSources, _menuSources.size());
+
+  // And the RetroAchievements overlay, which every present draws over the
+  // picture: here because this is the one Linux-only step of init, and it runs
+  // once the video context exists (Windows' overlay is a window of its own).
+  _videoContext->setOverlaySource(RA_UpdateOverlayImage);
+}
+
+// ---- the overlay while no frame runs
+
+void Application::presentOverlayWhileIdle()
+{
+  // Called from processEvents, which runs every pass of the paused loop
+  // (about every 16 ms) and before every frame. Frames carry the overlay
+  // themselves, so this acts only while none run.
+  const Fsm::State state = _fsm.currentState();
+  if (!_videoReady || !overlaypresent::idle(state))
+    return;
+
+  // a game's last picture only while one is loaded: after an unload Video's
+  // texture still holds it, and the window shows black
+  const int serial = _videoContext->pollOverlay();
+  switch (overlaypresent::decide(state, _videoContext->presentedOverlaySerial(), serial, isGameActive()))
+  {
+    case overlaypresent::Present::Redraw:      _video.redraw(); break;
+    case overlaypresent::Present::OverlayOnly: _videoContext->presentOverlayOnly(); break;
+    case overlaypresent::Present::Nothing:     break;
+  }
 }
 
 void Application::markRAMenuDirty()

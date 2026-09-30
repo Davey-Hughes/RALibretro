@@ -155,6 +155,7 @@ protected:
 
   menu::HostMenuState hostMenuState(); // what File and Settings show right now (non-const: Config's getters are not)
   void        createMenuBar();
+  void        presentOverlayWhileIdle(); // paused or with no game: present again when the overlay changed
 #endif
   void        handle(const SDL_WindowEvent* window);
   void        handle(const SDL_MouseMotionEvent* motion);

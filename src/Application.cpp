@@ -501,6 +501,7 @@ void Application::processEvents()
     lastHardcore = hardcore();
     updateMenu();
   }
+  presentOverlayWhileIdle();
 #endif
 
   SDL_Event event;
