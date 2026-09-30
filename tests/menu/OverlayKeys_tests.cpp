@@ -30,23 +30,83 @@ TEST(OverlayKeys_ArrowsEnterAndBackspaceNavigate)
   CHECK_EQ(0u, overlaykeys::bitFor(SDLK_ESCAPE)); // Esc opens and closes the overlay (kPauseToggle)
 }
 
-TEST(OverlayKeys_HeldUntilReleased)
+TEST(OverlayKeys_APressIsOneStep)
 {
-  unsigned held = overlaykeys::update(0, SDLK_DOWN, 0, true);
-  held = overlaykeys::update(held, SDLK_RETURN, 0, true);
-  CHECK_EQ(overlaykeys::kDown | overlaykeys::kConfirm, held);
-  held = overlaykeys::update(held, SDLK_DOWN, 0, false);
-  CHECK_EQ(overlaykeys::kConfirm, held);
+  overlaykeys::Taps taps;
+  taps.key(SDLK_DOWN, 0, true, false);
+  CHECK_EQ(overlaykeys::kDown, taps.next());
+  CHECK_EQ(0u, taps.next());
+}
+
+TEST(OverlayKeys_EachDesktopRepeatIsAStep)
+{
+  overlaykeys::Taps taps;
+  taps.key(SDLK_DOWN, 0, true, false);
+  CHECK_EQ(overlaykeys::kDown, taps.next());
+  CHECK_EQ(0u, taps.next());
+  taps.key(SDLK_DOWN, 0, true, true);
+  CHECK_EQ(overlaykeys::kDown, taps.next());
+  CHECK_EQ(0u, taps.next());
+  taps.key(SDLK_DOWN, 0, false, false); // a release adds nothing
+  CHECK_EQ(0u, taps.next());
+}
+
+TEST(OverlayKeys_ARepeatRightAfterAStepWaitsOnePass)
+{
+  overlaykeys::Taps taps;
+  taps.key(SDLK_DOWN, 0, true, false);
+  CHECK_EQ(overlaykeys::kDown, taps.next());
+  taps.key(SDLK_DOWN, 0, true, true);
+  CHECK_EQ(0u, taps.next());
+  CHECK_EQ(overlaykeys::kDown, taps.next());
+}
+
+TEST(OverlayKeys_EnterAndBackspaceActOncePerPress)
+{
+  overlaykeys::Taps taps;
+  taps.key(SDLK_RETURN, 0, true, false);
+  CHECK_EQ(overlaykeys::kConfirm, taps.next());
+  taps.key(SDLK_RETURN, 0, true, true);
+  CHECK_EQ(0u, taps.next());
+  CHECK_EQ(0u, taps.next());
+  taps.key(SDLK_RETURN, 0, true, false); // a new press
+  CHECK_EQ(overlaykeys::kConfirm, taps.next());
+
+  taps.key(SDLK_BACKSPACE, 0, true, false);
+  CHECK_EQ(overlaykeys::kCancel, taps.next());
+  taps.key(SDLK_BACKSPACE, 0, true, true);
+  CHECK_EQ(0u, taps.next());
+  CHECK_EQ(0u, taps.next());
+  taps.key(SDLK_BACKSPACE, 0, true, false);
+  CHECK_EQ(overlaykeys::kCancel, taps.next());
 }
 
 TEST(OverlayKeys_AModifiedPressIsNotNavigation)
 {
   // Alt+Enter toggles fullscreen: it must not also choose the selected item
-  CHECK_EQ(0u, overlaykeys::update(0, SDLK_RETURN, KMOD_LALT, true));
-  CHECK_EQ(0u, overlaykeys::update(0, SDLK_UP, KMOD_LCTRL, true));
-  CHECK_EQ(overlaykeys::kUp, overlaykeys::update(0, SDLK_UP, KMOD_LSHIFT, true));
-  // a release always clears, whatever is held with it
-  CHECK_EQ(0u, overlaykeys::update(overlaykeys::kConfirm, SDLK_RETURN, KMOD_LALT, false));
+  overlaykeys::Taps taps;
+  taps.key(SDLK_DOWN, KMOD_LCTRL, true, false);
+  CHECK_EQ(0u, taps.next());
+  taps.key(SDLK_RETURN, KMOD_LALT, true, false);
+  CHECK_EQ(0u, taps.next());
+  taps.key(SDLK_UP, KMOD_LGUI, true, false);
+  CHECK_EQ(0u, taps.next());
+  taps.key(SDLK_UP, KMOD_LSHIFT, true, false); // Shift is not a shortcut
+  CHECK_EQ(overlaykeys::kUp, taps.next());
+}
+
+TEST(OverlayKeys_ClearDropsWaitingStepsAndTheGap)
+{
+  overlaykeys::Taps taps;
+  taps.key(SDLK_DOWN, 0, true, false);
+  taps.clear();
+  CHECK_EQ(0u, taps.next());
+
+  taps.key(SDLK_DOWN, 0, true, false);
+  CHECK_EQ(overlaykeys::kDown, taps.next());
+  taps.clear();
+  taps.key(SDLK_DOWN, 0, true, false);
+  CHECK_EQ(overlaykeys::kDown, taps.next());
 }
 
 TEST(OverlayKeys_AppliedOnTopOfTheController)

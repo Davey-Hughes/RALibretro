@@ -47,6 +47,7 @@ along with RALibretro.  If not, see <http://www.gnu.org/licenses/>.
 #include "host/IHostEvents.h"
 #include "menu/HostMenu.h"
 #include "menu/RAMenuSource.h"
+#include "OverlayKeys.h"
 
 namespace host
 {
@@ -199,8 +200,8 @@ protected:
   bool              _turboSelected = false;
   // an expose while no frame runs: presentOverlayWhileIdle presents again (OverlayPresent.h)
   bool              _exposedWhileIdle = false;
-  // the overlay's own keys held now (OverlayKeys.h), whatever controller 1 is bound to
-  unsigned          _overlayKeysHeld = 0;
+  // the overlay's own key steps (OverlayKeys.h), whatever controller 1 is bound to
+  overlaykeys::Taps _overlayTaps;
 #endif
 #ifndef _WIN32
   std::unique_ptr<menu::HostMenuSource> _fileMenu;

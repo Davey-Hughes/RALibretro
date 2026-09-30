@@ -36,19 +36,44 @@ namespace overlaykeys
     }
   }
 
-  // The keys held after a key event. A press with Ctrl, Alt or the logo key held is a shortcut, not navigation
-  // (Alt+Enter is fullscreen); a release always clears.
-  inline unsigned update(unsigned held, SDL_Keycode sym, Uint16 mod, bool pressed)
+  // Keyboard steps. The overlay moves when its input changes, and repeats an input held down itself (600 ms, then
+  // every 200 ms: right for a controller, slow for a keyboard). So the arrow keys follow the desktop's own key repeat
+  // instead: every press, the first and each repeat, is one step - one pass with the key down, then at least one with
+  // it up, so the overlay sees a change each time. Enter and Backspace act once per press: their repeats are ignored.
+  struct Taps
   {
-    const unsigned bit = bitFor(sym);
-    if (!pressed)
-      return held & ~bit;
-    if ((mod & (KMOD_CTRL | KMOD_ALT | KMOD_GUI)) != 0)
-      return held;
-    return held | bit;
-  }
+    unsigned pending = 0; // steps waiting to be sent
+    unsigned sent = 0;    // sent on the last pass: up for one pass before they can be sent again
 
-  // The held keys into a ControllerInput (RA_Interface.h), on top of what controller 1 gave.
+    void key(SDL_Keycode sym, Uint16 mod, bool pressed, bool repeat)
+    {
+      const unsigned bit = bitFor(sym);
+      if (bit == 0 || !pressed)
+        return;
+      if ((mod & (KMOD_CTRL | KMOD_ALT | KMOD_GUI)) != 0)
+        return; // a shortcut (Alt+Enter is fullscreen), not navigation
+      if (repeat && (bit & (kConfirm | kCancel)) != 0)
+        return; // once per press
+      pending |= bit;
+    }
+
+    // the keys to send on this pass
+    unsigned next()
+    {
+      const unsigned send = pending & ~sent;
+      pending &= ~send;
+      sent = send;
+      return send;
+    }
+
+    void clear()
+    {
+      pending = 0;
+      sent = 0;
+    }
+  };
+
+  // The keys to send into a ControllerInput (RA_Interface.h), on top of what controller 1 gave.
   template <typename ControllerInput>
   void apply(unsigned held, ControllerInput& input)
   {

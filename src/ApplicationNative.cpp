@@ -42,8 +42,12 @@ void Application::onKey(SDL_Keycode sym, Uint16 mod, bool pressed, bool repeat)
   if (!_inputReady)
     return;
 
-  // the overlay's own keys, before the bindings: they navigate it whatever controller 1 is bound to
-  _overlayKeysHeld = overlaykeys::update(_overlayKeysHeld, sym, mod, pressed);
+  // the overlay's own keys, before the bindings: they navigate it whatever controller 1 is bound to. Only while it is
+  // fully up, as run() reads them only then: a key pressed in the game is no step for an overlay opened later.
+  if (RA_IsOverlayFullyVisible())
+    _overlayTaps.key(sym, mod, pressed, repeat);
+  else
+    _overlayTaps.clear();
 
   SDL_KeyboardEvent key;
   memset(&key, 0, sizeof(key));
@@ -210,8 +214,8 @@ void Application::addOverlayKeys(ControllerInput& input)
 {
   // run() reads controller 1 for the overlay, and controller 1 may be a gamepad
   // (KeyBinds' default when one is connected): the arrow keys, Enter and
-  // Backspace navigate it as well
-  overlaykeys::apply(_overlayKeysHeld, input);
+  // Backspace steps navigate it as well
+  overlaykeys::apply(_overlayTaps.next(), input);
 }
 
 // ---- the overlay while no frame runs
