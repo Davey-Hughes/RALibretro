@@ -142,6 +142,26 @@ target_link_libraries(RALibretro PRIVATE ${SDL2_LIBRARIES} OpenGL::GL dl pthread
 # part of the application, and keep its force-include.
 set_source_files_properties(src/ApplicationNative.cpp src/components/DialogNative.cpp PROPERTIES COMPILE_OPTIONS "${MENU_WARNINGS}")
 
+# --- the overlay's files -----------------------------------------------------------
+# The library's sounds, sounds.txt, the sample themes and overlayBG.png (the pause overlay's background), copied
+# beside the executable into Overlay/: what RALibretro.vcxproj's post-build step (src/RAInterface/CopyOverlay.bat)
+# does into bin/overlay on Windows. A capital O here: the library asks for "Overlay/...", and only Windows' file
+# system lets "overlay" answer. One rule per file, so a changed or deleted copy is made again by the next build.
+file(GLOB OVERLAY_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/RAInterface/overlay/*)
+set(OVERLAY_COPIES)
+foreach(OVERLAY_SOURCE ${OVERLAY_SOURCES})
+  get_filename_component(OVERLAY_NAME ${OVERLAY_SOURCE} NAME)
+  set(OVERLAY_COPY ${CMAKE_CURRENT_BINARY_DIR}/Overlay/${OVERLAY_NAME})
+  add_custom_command(OUTPUT ${OVERLAY_COPY}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/Overlay
+    COMMAND ${CMAKE_COMMAND} -E copy ${OVERLAY_SOURCE} ${OVERLAY_COPY}
+    DEPENDS ${OVERLAY_SOURCE}
+    VERBATIM)
+  list(APPEND OVERLAY_COPIES ${OVERLAY_COPY})
+endforeach()
+add_custom_target(ralibretro_overlay_files ALL DEPENDS ${OVERLAY_COPIES})
+add_dependencies(RALibretro ralibretro_overlay_files)
+
 # --- native menu tests ---------------------------------------------------------
 # The menu's logic has unit tests of its own: RALibretro has no test framework.
 # The tests run under ASan and UBSan, so they compile the menu sources
