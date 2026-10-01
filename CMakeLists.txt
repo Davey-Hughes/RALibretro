@@ -102,6 +102,7 @@ add_library(ralibretro_qthost STATIC
   src/host/qt/QtMenuBar.cpp
   src/host/qt/QtKeyMap.cpp
   src/host/qt/QtDialog.cpp
+  src/host/qt/GlCapture.cpp
 )
 target_include_directories(ralibretro_qthost PUBLIC src src/libretro src/RAInterface)
 target_include_directories(ralibretro_qthost SYSTEM PUBLIC ${SDL2_INCLUDE_DIRS})
@@ -114,6 +115,7 @@ add_executable(ralibretro_qthost_tests
   tests/qthost/QtHost_tests.cpp
   tests/qthost/QtDialog_tests.cpp
   tests/qthost/Overlay_tests.cpp
+  tests/qthost/GlCapture_tests.cpp
   tests/menu/Runner.cpp
 )
 target_include_directories(ralibretro_qthost_tests PRIVATE tests/menu)
