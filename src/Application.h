@@ -96,6 +96,8 @@ public:
 
 #ifndef _WIN32
   void markRAMenuDirty(); // RebuildMenu: the RetroAchievements menu re-reads its items when next opened
+  // RA_InstallScreenCapture's function: the game picture for an achievement screenshot (ApplicationNative.cpp)
+  int captureScreen(int* width, int* height, const void** pixels, int* stride);
 #endif
 
   Config& config() { return _config; }
@@ -202,6 +204,8 @@ protected:
   bool              _exposedWhileIdle = false;
   // the overlay's own key steps (OverlayKeys.h), whatever controller 1 is bound to
   overlaykeys::Taps _overlayTaps;
+  // the last picture captureScreen handed the library: valid until its next call
+  std::vector<uint32_t> _screenCapture;
 #endif
 #ifndef _WIN32
   std::unique_ptr<menu::HostMenuSource> _fileMenu;

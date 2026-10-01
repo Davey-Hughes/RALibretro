@@ -31,6 +31,7 @@ void reset();
 void loadROM(const char* path);
 #ifndef _WIN32
 void rebuildRAMenu();
+int captureScreen(int* width, int* height, const void** pixels, int* stride);
 #endif
 
 
@@ -131,6 +132,9 @@ void RA_Init(HWND hWnd)
 #ifndef _WIN32
   // the toolkit's worker threads hand the callbacks above back to this thread through Qt's event loop
   RA_InstallHostDispatcher(&PostToMainThread);
+
+  // and the game picture for achievement screenshots, which Windows' toolkit BitBlts from the window itself
+  RA_InstallScreenCapture(&captureScreen);
 #endif
 
   // add a placeholder menu item and start the login process - menu will be updated when login completes

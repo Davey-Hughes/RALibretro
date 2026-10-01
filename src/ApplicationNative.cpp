@@ -270,4 +270,28 @@ bool dialognative::backgroundInputEnabled()
   return app.config().getBackgroundInput();
 }
 
+// ---- achievement screenshots (RA_InstallScreenCapture)
+
+int Application::captureScreen(int* width, int* height, const void** pixels, int* stride)
+{
+  // The library asks only from inside RA_DoAchievementsFrame, with a game running; this is for one that does not.
+  if (!_videoReady)
+    return 0;
+
+  unsigned w = 0, h = 0;
+  if (!_video.capturePicture(_screenCapture, w, h))
+    return 0;
+
+  *width = static_cast<int>(w);
+  *height = static_cast<int>(h);
+  *pixels = _screenCapture.data();
+  *stride = static_cast<int>(w * 4);
+  return 1;
+}
+
+int captureScreen(int* width, int* height, const void** pixels, int* stride)
+{
+  return app.captureScreen(width, height, pixels, stride);
+}
+
 #endif

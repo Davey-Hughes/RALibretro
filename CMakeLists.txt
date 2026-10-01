@@ -57,6 +57,7 @@ set(SOURCES_CXX
   src/components/Logger.cpp
   src/components/Microphone.cpp
   src/components/Video.cpp
+  src/components/VideoNative.cpp
   src/About.cpp
   src/Application.cpp
   src/ApplicationNative.cpp
