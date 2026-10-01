@@ -49,6 +49,9 @@ bool host::renderOffscreen(int width, int height, const std::function<void()>& d
     return false;
   }
 
+  // sized before any OpenGL state changes: a failed allocation then leaves nothing to put back
+  pixels.resize(static_cast<size_t>(width) * static_cast<size_t>(height));
+
   QOpenGLFunctions* gl = context->functions();
 
   // One already pending was raised by something that does not check (Gl::check reads its own at once): cleared
@@ -57,6 +60,7 @@ bool host::renderOffscreen(int width, int height, const std::function<void()>& d
   if (pending != GL_NO_ERROR)
   {
     error = describe("an OpenGL error was pending before the capture; it is cleared", pending);
+    pixels.clear();
     return false;
   }
 
@@ -103,7 +107,6 @@ bool host::renderOffscreen(int width, int height, const std::function<void()>& d
 
     draw();
 
-    pixels.resize(static_cast<size_t>(width) * static_cast<size_t>(height));
     gl->glReadPixels(0, 0, width, height, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, pixels.data());
 
     err = drainErrors(gl);

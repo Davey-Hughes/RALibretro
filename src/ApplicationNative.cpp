@@ -28,6 +28,7 @@
 
 #include <RA_Interface.h>
 
+#include <exception>
 #include <map>
 #include <set>
 #include <string.h>
@@ -291,7 +292,20 @@ int Application::captureScreen(int* width, int* height, const void** pixels, int
 
 int captureScreen(int* width, int* height, const void** pixels, int* stride)
 {
-  return app.captureScreen(width, height, pixels, stride);
+  // A C callback, called through the library's C entry points: nothing may escape it.
+  try
+  {
+    return app.captureScreen(width, height, pixels, stride);
+  }
+  catch (const std::exception& e)
+  {
+    app.logger().error("[APP] Achievement screenshot: %s", e.what());
+  }
+  catch (...)
+  {
+    app.logger().error("[APP] Achievement screenshot: an unknown exception");
+  }
+  return 0;
 }
 
 #endif

@@ -83,8 +83,8 @@ public:
 #ifndef _WIN32
   // The game as the window shows it - letterbox, aspect, rotation and filter - without the on-screen messages or the
   // RetroAchievements overlay, drawn again offscreen at the window's size (device pixels) and read back: 0xAARRGGBB,
-  // rows top-down. For the library's achievement screenshots (RA_InstallScreenCapture). False, logged, when there
-  // is no frame yet or OpenGL fails; a failure never leaves an OpenGL error for Gl to read (VideoNative.cpp).
+  // rows top-down. For the library's achievement screenshots (RA_InstallScreenCapture). False when there is no frame
+  // yet (silently) or OpenGL fails (logged); a failure never leaves an OpenGL error for Gl to read (VideoNative.cpp).
   bool capturePicture(std::vector<uint32_t>& pixels, unsigned& width, unsigned& height);
 #endif
 
