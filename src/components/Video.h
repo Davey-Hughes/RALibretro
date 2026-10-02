@@ -25,7 +25,7 @@ along with RALibretro.  If not, see <http://www.gnu.org/licenses/>.
 
 #include <SDL_opengl.h>
 
-#ifndef _WIN32
+#ifdef RA_HOST_QT
 #include <cstdint>
 #include <vector>
 #endif
@@ -80,7 +80,7 @@ public:
   typedef void (*RotationHandler)(Rotation oldRotation, Rotation newRotation);
   void setRotationChangedHandler(RotationHandler handler) { _rotationHandler = handler; }
 
-#ifndef _WIN32
+#ifdef RA_HOST_QT
   // The game as the window shows it - letterbox, aspect, rotation and filter - without the on-screen messages or the
   // RetroAchievements overlay, drawn again offscreen at the window's size (device pixels) and read back: 0xAARRGGBB,
   // rows top-down. For the library's achievement screenshots (RA_InstallScreenCapture). False when there is no frame

@@ -3,6 +3,10 @@
 #include <QMouseEvent>
 #include <QResizeEvent>
 
+#ifdef Q_OS_WIN
+#include <qt_windows.h>
+#endif
+
 host::GlWindow::GlWindow(IHostEvents& events) : _events(events)
 {
   setSurfaceType(QSurface::OpenGLSurface); // before the platform window exists
@@ -43,6 +47,18 @@ void host::GlWindow::exposeEvent(QExposeEvent*)
   if (isExposed())
     _events.onExposed();
 }
+
+#ifdef Q_OS_WIN
+bool host::GlWindow::nativeEvent(const QByteArray& eventType, void* message, qintptr* result)
+{
+  const MSG* msg = static_cast<const MSG*>(message);
+  // Qt's windows are Unicode windows: the text arrives as UTF-16 whichever SetWindowText sent it
+  if (msg->message == WM_SETTEXT && msg->lParam != 0 && _titleHandler)
+    _titleHandler(QString::fromWCharArray(reinterpret_cast<const wchar_t*>(msg->lParam)));
+
+  return QWindow::nativeEvent(eventType, message, result); // not handled: Windows keeps the text too
+}
+#endif
 
 void host::GlWindow::resizeEvent(QResizeEvent* event)
 {

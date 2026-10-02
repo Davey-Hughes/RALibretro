@@ -1,8 +1,8 @@
 #pragma once
 
-// Linux only (ApplicationNative.cpp and tests/menu). The RetroAchievements overlay reads controller 1
+// The Qt host only (ApplicationNative.cpp and tests/menu). The RetroAchievements overlay reads controller 1
 // (Application::run), and controller 1 is bound to a gamepad when one was connected at the first run (KeyBinds'
-// defaults): these keys navigate the overlay as well, whatever the bindings. Windows keeps its own behaviour.
+// defaults): these keys navigate the overlay as well, whatever the bindings. The Win32 host keeps its own behaviour.
 
 #include <SDL_keycode.h>
 #include <SDL_stdinc.h>

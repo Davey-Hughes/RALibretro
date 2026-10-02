@@ -41,7 +41,9 @@ along with RALibretro.  If not, see <http://www.gnu.org/licenses/>.
 #include "Memory.h"
 #include "States.h"
 
-#ifndef _WIN32
+// RA_HOST_QT: this build's host is the Qt one (src/host/qt, built by CMakeLists.txt), on Linux or on Windows,
+// in place of the SDL window with its Win32 menu. _WIN32 is tested only for what the operating system decides.
+#ifdef RA_HOST_QT
 #include <memory>
 
 #include "host/IHostEvents.h"
@@ -57,7 +59,7 @@ namespace host
 #endif
 
 class Application
-#ifndef _WIN32
+#ifdef RA_HOST_QT
   : public host::IHostEvents // the Qt host window's events arrive here
 #endif
 {
@@ -94,7 +96,7 @@ public:
 
   void refreshMemoryMap();
 
-#ifndef _WIN32
+#ifdef RA_HOST_QT
   void markRAMenuDirty(); // RebuildMenu: the RetroAchievements menu re-reads its items when next opened
   // RA_InstallScreenCapture's function: the game picture for an achievement screenshot (ApplicationNative.cpp)
   int captureScreen(int* width, int* height, const void** pixels, int* stride);
@@ -112,7 +114,7 @@ protected:
 
   // Called by SDL from the audio thread
   static void s_audioCallback(void* udata, Uint8* stream, int len);
-#ifndef _WIN32
+#ifdef RA_HOST_QT
   // pauseForBadPerformance, posted to the main thread by the audio callback (ApplicationNative.cpp)
   static void s_pauseForBadPerformance(void* app);
 #endif
@@ -145,8 +147,8 @@ protected:
   void        resizeWindow(int width, int height);
   void        toggleFullscreen();
   void        handle(const SDL_SysWMEvent* syswm);
-  void        handleCommand(unsigned cmd); // a menu command (IDM_*), from WM_COMMAND or the Linux menu bar
-#ifndef _WIN32
+  void        handleCommand(unsigned cmd); // a menu command (IDM_*), from WM_COMMAND or the Qt menu bar
+#ifdef RA_HOST_QT
   // host::IHostEvents, called from inside QtHost::pump() (ApplicationNative.cpp)
   void        onKey(SDL_Keycode sym, Uint16 mod, bool pressed, bool repeat) override;
   void        onMouseMove(int x, int y) override;
@@ -187,7 +189,7 @@ protected:
   std::string _coreName;
   int         _system;
 
-#ifdef _WIN32
+#ifndef RA_HOST_QT
   SDL_Window*       _window;
 #else
   std::unique_ptr<host::QtHost> _host;
@@ -198,7 +200,7 @@ protected:
   // true from the end of a successful init() to the start of destroy(): keys and
   // the mouse arrive from inside create()'s expose wait and init's message boxes
   bool              _inputReady = false;
-  // the fast-forward selection: what Windows keeps as File > Turbo's check mark
+  // the fast-forward selection: what the Win32 menu keeps as File > Turbo's check mark
   bool              _turboSelected = false;
   // an expose while no frame runs: presentOverlayWhileIdle presents again (OverlayPresent.h)
   bool              _exposedWhileIdle = false;
@@ -207,7 +209,7 @@ protected:
   // the last picture captureScreen handed the library: valid until its next call
   std::vector<uint32_t> _screenCapture;
 #endif
-#ifndef _WIN32
+#ifdef RA_HOST_QT
   std::unique_ptr<menu::HostMenuSource> _fileMenu;
   std::unique_ptr<menu::HostMenuSource> _settingsMenu;
   std::unique_ptr<menu::RAMenuSource>   _raMenu;
@@ -219,7 +221,7 @@ protected:
   Fifo         _fifo;
   Logger       _logger;
   Config       _config;
-#ifdef _WIN32
+#ifndef RA_HOST_QT
   VideoContext _videoContext;
 #else
   std::unique_ptr<host::QtVideoContext> _videoContext;

@@ -41,8 +41,17 @@ namespace host
 
     // Builds and shows the window with a render area of width x height device
     // pixels, then pumps until the render window is exposed (bounded, 2 s).
+    // x and y, when both are given, are where the window goes: a position() from
+    // an earlier run. They are used only where a client may place its own windows
+    // (not on Wayland) and only while that spot is still on a screen; otherwise
+    // the window system places the window, as it does when none is given.
     // false only if the QApplication is missing.
-    bool create(const char* title, int width, int height);
+    bool create(const char* title, int width, int height, const int* x = nullptr, const int* y = nullptr);
+
+    // Where the window is, for create() to take next time: the top left corner of
+    // its frame, in Qt's desktop coordinates. False, with x and y untouched, where
+    // the window system keeps that to itself (Wayland).
+    bool position(int* x, int* y) const;
 
     // Runs everything Qt has queued: window events, posted work, deferred deletes.
     void pump();
@@ -50,6 +59,12 @@ namespace host
     // The render widget's window: the surface both GL contexts target.
     QWindow* glSurface() const;
     QWidget* renderWidget() const; // for tests
+
+    // On Windows, the render window's HWND, valid once create() has returned: what the Win32 RetroAchievements
+    // library is handed as the emulator's window. It lays its overlay window over that window's client area, so
+    // it gets the game area and not the frame, whose client area holds the menu bar too. A title the library
+    // sets on it becomes the main window's. nullptr on every other platform: nothing there takes a handle.
+    void* gameWindowHandle() const;
 
     // Device pixels. resizeContent ignores a width or height <= 0, as
     // SDL_SetWindowSize does.

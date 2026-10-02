@@ -22,6 +22,10 @@ namespace menutests
   void fail(const char* file, int line, const std::string& message);
   int run(const char* filter);
 
+  // POSIX setenv(name, value, 1) and unsetenv(name), which Windows' C runtime lacks.
+  void setEnv(const char* name, const char* value);
+  void unsetEnv(const char* name);
+
   template <typename T>
   std::string describe(const T& value)
   {

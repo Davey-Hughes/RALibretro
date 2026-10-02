@@ -3,7 +3,7 @@
 #include <SDL_video.h>
 #include <SDL_opengl_glext.h>
 
-#ifndef _WIN32
+#ifdef RA_HOST_QT
 #include "host/HostServices.h"
 #endif
 
@@ -65,7 +65,7 @@ static PFNGLBINDSAMPLERPROC s_glBindSampler;
 
 static void* getProcAddress(const char* symbol)
 {
-#ifdef _WIN32
+#ifndef RA_HOST_QT
   void* address = SDL_GL_GetProcAddress(symbol);
 #else
   void* address = host::getProcAddress(symbol); // from the current QOpenGLContext

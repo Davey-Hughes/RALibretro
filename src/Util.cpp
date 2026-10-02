@@ -757,7 +757,7 @@ bool util::getFiles(const std::string& path, const std::string& extension, std::
 
 #endif
 
-#ifdef _WINDOWS
+#if defined(_WINDOWS) && !defined(RA_HOST_QT) // the Qt host has file dialogs of its own (compat/native_stubs.cpp)
 std::string util::openFileDialog(HWND hWnd, const std::string& extensionsFilter, const std::string& initialDirectory)
 {
   std::wstring unicodeExtensionsFilter = util::utf8ToUChar(extensionsFilter);

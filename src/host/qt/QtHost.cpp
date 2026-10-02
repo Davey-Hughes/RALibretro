@@ -15,6 +15,8 @@
 #include <QCloseEvent>
 #include <QMainWindow>
 #include <QMenuBar>
+#include <QPoint>
+#include <QScreen>
 #include <QSurfaceFormat>
 #include <QWindow>
 
@@ -47,6 +49,13 @@ namespace
   private:
     host::IHostEvents& _events;
   };
+
+  // Whether a client can read and set where its windows are. Not on Wayland, whose compositor places every
+  // window and tells no client where: a position asked for is ignored there, and one read back is 0,0.
+  bool windowsHavePositions()
+  {
+    return !QGuiApplication::platformName().startsWith(QLatin1String("wayland"));
+  }
 }
 
 struct host::QtHost::Impl
@@ -64,10 +73,36 @@ struct host::QtHost::Impl
 
   Impl(libretro::LoggerComponent* l, IHostEvents& e) : logger(l), events(e) {}
 
-  int menuBarHeight() const
+  // The height the main window's layout gives the bar in a window this wide (logical pixels), by QLayout's own
+  // arithmetic for a layout's menu bar (menuBarHeightForWidth and qSmartMinSize, in qlayout.cpp and
+  // qlayoutengine.cpp): heightForWidth, no less than the bar's minimum and no more than its maximum. Not the size
+  // hint alone: heightForWidth adds the gap Windows' styles keep below a menu bar
+  // (QStyle::SH_MainWindow_SpaceBelowMenuBar), and without it the render area came out that much too short there.
+  int menuBarHeight(int windowWidth) const
   {
     QMenuBar* bar = window->menuBar();
-    return bar->isVisible() ? bar->sizeHint().height() : 0;
+    if (!bar->isVisible())
+      return 0;
+
+    int height = bar->heightForWidth(qMax(windowWidth, bar->minimumWidth()));
+    if (height == -1)
+      height = bar->sizeHint().height();
+
+    // the minimum: the minimum size hint, or the size hint too for a widget whose policy does not let it shrink
+    // (a menu bar's does not), unless the widget was given a minimum height of its own
+    const QSizePolicy::Policy policy = bar->sizePolicy().verticalPolicy();
+    int minimum = 0;
+    if (policy != QSizePolicy::Ignored)
+    {
+      minimum = bar->minimumSizeHint().height();
+      if ((static_cast<int>(policy) & static_cast<int>(QSizePolicy::ShrinkFlag)) == 0)
+        minimum = qMax(minimum, bar->sizeHint().height());
+    }
+    minimum = qMin(minimum, bar->maximumHeight());
+    if (bar->minimumHeight() > 0)
+      minimum = bar->minimumHeight();
+
+    return qBound(minimum, height, qMax(minimum, bar->maximumHeight()));
   }
 };
 
@@ -97,7 +132,7 @@ host::QtHost::~QtHost()
   delete _impl->window;     // owns the container (and through it the GL window) and the menu bar
 }
 
-bool host::QtHost::create(const char* title, int width, int height)
+bool host::QtHost::create(const char* title, int width, int height, const int* x, const int* y)
 {
   if (QApplication::instance() == nullptr)
   {
@@ -109,6 +144,10 @@ bool host::QtHost::create(const char* title, int width, int height)
   _impl->window = new MainWindow(_impl->events);
   _impl->window->setWindowTitle(QString::fromUtf8(title));
   _impl->gl = new GlWindow(_impl->events);
+#ifdef Q_OS_WIN
+  // by pointer: the main window owns the render window, through its container, and so outlives it
+  _impl->gl->setTitleHandler([window = _impl->window](const QString& title) { window->setWindowTitle(title); });
+#endif
 
   // Vsync, decided once: Qt fixes a window's swap interval when its platform
   // window is made, and the platform is known only now the application exists.
@@ -137,6 +176,14 @@ bool host::QtHost::create(const char* title, int width, int height)
   }
 
   resizeContent(width, height);
+  if (x != nullptr && y != nullptr && windowsHavePositions())
+  {
+    // Only while the spot is still on a screen: the monitor it was saved on may be gone. The point tested is a
+    // little inside the frame, where the title bar is; a frame's own corner can lie just off a screen's edge.
+    const QPoint position(*x, *y);
+    if (QGuiApplication::screenAt(position + QPoint(32, 8)) != nullptr)
+      _impl->window->move(position);
+  }
   _impl->window->show();
   _impl->container->setFocus();
 
@@ -157,6 +204,17 @@ bool host::QtHost::create(const char* title, int width, int height)
   return true;
 }
 
+bool host::QtHost::position(int* x, int* y) const
+{
+  if (_impl->window == nullptr || !windowsHavePositions())
+    return false;
+
+  const QPoint position = _impl->window->pos(); // a window's pos() is its frame's
+  *x = position.x();
+  *y = position.y();
+  return true;
+}
+
 void host::QtHost::pump()
 {
   QCoreApplication::processEvents(QEventLoop::AllEvents);
@@ -171,6 +229,15 @@ QWindow* host::QtHost::glSurface() const
 QWidget* host::QtHost::renderWidget() const
 {
   return _impl->container;
+}
+
+void* host::QtHost::gameWindowHandle() const
+{
+#ifdef Q_OS_WIN
+  return _impl->gl != nullptr ? reinterpret_cast<void*>(_impl->gl->winId()) : nullptr;
+#else
+  return nullptr;
+#endif
 }
 
 void host::QtHost::contentSize(int* width, int* height) const
@@ -190,7 +257,7 @@ void host::QtHost::resizeContent(int width, int height)
   const qreal dpr = _impl->gl->devicePixelRatio();
   const int logicalWidth = qRound(width / dpr);
   const int logicalHeight = qRound(height / dpr);
-  _impl->window->resize(logicalWidth, logicalHeight + _impl->menuBarHeight());
+  _impl->window->resize(logicalWidth, logicalHeight + _impl->menuBarHeight(logicalWidth));
 }
 
 bool host::QtHost::isFullscreen() const

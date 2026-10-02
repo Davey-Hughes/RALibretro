@@ -104,9 +104,17 @@ TEST(DialogLayout_TheThreeCallSitesAreCaptured)
   CHECK_EQ(-2, specs[1].controls.size() > 1 ? specs[1].controls[1].y : 0);
 }
 
-// Saving Settings' path options name the folders States builds, with the separator it builds them with: '/' here
-TEST(DialogLayout_SavingPathOptionsUseForwardSlashes)
+// Saving Settings' path options name the folders States builds, with the separator it builds them with: the
+// platform's, '\' on Windows and '/' everywhere else, and never the other one
+TEST(DialogLayout_SavingPathOptionsUseThePlatformSeparator)
 {
+#ifdef _WIN32
+  const char other = '/';
+  const std::string systemAndCore = "Saves\\[System]\\[Core]";
+#else
+  const char other = '\\';
+  const std::string systemAndCore = "Saves/[System]/[Core]";
+#endif
   const auto specs = dialoglayout::captureRealDialogs();
   CHECK_EQ(size_t{3}, specs.size());
   if (specs.size() != 3)
@@ -117,9 +125,9 @@ TEST(DialogLayout_SavingPathOptionsUseForwardSlashes)
       options.insert(options.end(), control.options.begin(), control.options.end());
   CHECK(!options.empty());
   for (const auto& option : options)
-    if (option.find('\\') != std::string::npos)
-      menutests::fail(__FILE__, __LINE__, "Saving Settings option \"" + option + "\" has a backslash");
-  CHECK(std::find(options.begin(), options.end(), "Saves/[System]/[Core]") != options.end());
+    if (option.find(other) != std::string::npos)
+      menutests::fail(__FILE__, __LINE__, "Saving Settings option \"" + option + "\" has the other platform's separator");
+  CHECK(std::find(options.begin(), options.end(), systemAndCore) != options.end());
 }
 
 TEST(DialogLayout_TheThreeDialogsLayOutCleanly)

@@ -28,7 +28,7 @@ along with RALibretro.  If not, see <http://www.gnu.org/licenses/>.
 
 #include <SDL_render.h>
 
-#ifndef _WIN32
+#ifdef RA_HOST_QT
 #include "host/HostServices.h"
 #endif
 
@@ -398,7 +398,7 @@ uintptr_t Video::getCurrentFramebuffer()
 
 retro_proc_address_t Video::getProcAddress(const char* symbol)
 {
-#ifdef _WIN32
+#ifndef RA_HOST_QT
   void* address = SDL_GL_GetProcAddress(symbol);
 #else
   void* address = host::getProcAddress(symbol); // from the current QOpenGLContext

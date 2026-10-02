@@ -1482,7 +1482,7 @@ static SDL_Scancode WindowsScanCodeToSDLScanCode(LPARAM lparam, WPARAM wparam)
   return code;
 }
 
-#ifdef _WIN32 /* these dialogs are built from Win32 dialog templates */
+#ifndef RA_HOST_QT /* these dialogs are built from Win32 dialog templates */
 class ChangeInputDialog : public Dialog
 {
 public:
@@ -1989,22 +1989,22 @@ protected:
   }
 };
 
-#else /* !_WIN32 */
+#else /* RA_HOST_QT */
 
 void KeyBinds::showControllerDialog(Input& input, int port)
 {
   (void)input; (void)port;
-  _logger->warn("[KEY] controller binding dialog is not implemented on this platform");
+  _logger->warn("[KEY] controller binding dialog is not implemented under the Qt host");
 }
 
 void KeyBinds::showHotKeyDialog(Input& input)
 {
   (void)input;
-  _logger->warn("[KEY] hotkey binding dialog is not implemented on this platform");
+  _logger->warn("[KEY] hotkey binding dialog is not implemented under the Qt host");
 }
 
-#endif /* _WIN32 */
-#ifdef _WIN32
+#endif /* !RA_HOST_QT */
+#ifndef RA_HOST_QT
 void KeyBinds::showControllerDialog(Input& input, int port)
 {
   char label[32];
@@ -2050,4 +2050,4 @@ void KeyBinds::showHotKeyDialog(Input& input)
   if (db.show())
     _bindings = db.getBindings();
 }
-#endif /* _WIN32 */
+#endif /* !RA_HOST_QT */

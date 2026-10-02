@@ -1,8 +1,8 @@
-// The Linux Dialog (components/Dialog.h): init and the add* calls recorded as a host::DialogSpec, which
-// host::runDialog shows as a Qt dialog, and the answers written back as Windows' Dialog.cpp writes them.
-// Built by CMakeLists.txt only; Windows builds Dialog.cpp.
+// The Qt host's Dialog (components/Dialog.h): init and the add* calls recorded as a host::DialogSpec, which
+// host::runDialog shows as a Qt dialog, and the answers written back as the Win32 host's Dialog.cpp writes them.
+// Built by CMakeLists.txt only; the Win32 host builds Dialog.cpp.
 
-#ifndef _WIN32
+#ifdef RA_HOST_QT
 
 // Dialog.h's default dialogProc leaves its parameters unused (Windows-visible); the warning stops here.
 #pragma GCC diagnostic push
@@ -22,7 +22,7 @@ namespace
 {
   using Kind = host::DialogControl::Kind;
 
-  // On Linux _template holds the dialog's host::DialogSpec, where Windows keeps its DLGTEMPLATEEX.
+  // Here _template holds the dialog's host::DialogSpec, where Dialog.cpp keeps its DLGTEMPLATEEX.
   host::DialogSpec& specOf(void* tmpl) { return *static_cast<host::DialogSpec*>(tmpl); }
 
   // Win32 dialog-unit coordinates are signed shorts (DLGITEMTEMPLATEEX): a combo box a caller places at y - 2 on
@@ -215,11 +215,11 @@ bool Dialog::show()
   return _updated;
 }
 
-// Windows' subclass hooks (Dialog.h). Linux compiles none of the four dialogs that override them
+// The Win32 host's subclass hooks (Dialog.h). The Qt host compiles none of the four dialogs that override them
 // (Config::ConfigDialog, KeyBinds' InputDialog and ChangeInputDialog, Emulator's CoreDialog), and nothing here
 // calls them; R2 (port-roadmap.md) replaces their use.
 void Dialog::initControls(HWND) {}
 void Dialog::retrieveData(HWND) {}
 void Dialog::markClosed(HWND) {}
 
-#endif /* !_WIN32 */
+#endif /* RA_HOST_QT */

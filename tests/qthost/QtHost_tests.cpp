@@ -653,6 +653,59 @@ TEST(QtHost_ResizeContentKeepsTheRenderAreaBelowTheBar)
   CHECK_EQ(240, h);
 }
 
+// The window opens where an earlier run left it: create() takes what position() gave. Not on Wayland, which
+// places every window itself and tells no client where: there position() says so and this proves nothing.
+TEST(QtHost_ASavedPositionIsWhereTheWindowOpens)
+{
+  int x = 0, y = 0;
+  {
+    TestLogger logger;
+    Events events;
+    host::QtHost host(&logger, events);
+    const int askedX = 120, askedY = 90;
+    CHECK(host.create("test", 320, 240, &askedX, &askedY));
+    host.pump();
+    if (!host.position(&x, &y))
+    {
+      std::printf("SKIP QtHost_ASavedPositionIsWhereTheWindowOpens: the %s platform gives a window no position\n",
+                  QGuiApplication::platformName().toUtf8().constData());
+      return;
+    }
+    CHECK_EQ(120, x);
+    CHECK_EQ(90, y);
+  }
+
+  // and round the trip: what position() gave is what the next window is given
+  {
+    TestLogger logger;
+    Events events;
+    host::QtHost host(&logger, events);
+    CHECK(host.create("test", 320, 240, &x, &y));
+    host.pump();
+    int x2 = 0, y2 = 0;
+    CHECK(host.position(&x2, &y2));
+    CHECK_EQ(x, x2);
+    CHECK_EQ(y, y2);
+  }
+}
+
+// A position that is on no screen now (its monitor is gone) is not used: the window system places the window
+TEST(QtHost_ASavedPositionOffEveryScreenIsIgnored)
+{
+  TestLogger logger;
+  Events events;
+  host::QtHost host(&logger, events);
+  const int farX = 1000000, farY = 1000000;
+  CHECK(host.create("test", 320, 240, &farX, &farY));
+  host.pump();
+  int x = 0, y = 0;
+  if (!host.position(&x, &y))
+    return; // Wayland: nothing to place, nothing to read
+  CHECK(x != farX);
+  CHECK(y != farY);
+  CHECK(QGuiApplication::screenAt(QPoint(x + 32, y + 8)) != nullptr);
+}
+
 // Qt exposes the game area once the window has its new size: leaving fullscreen while paused, Application presents
 // again then (OverlayPresent's expose), since a present from before it can show scaled into a corner.
 TEST(QtHost_AnExposeOfTheGameAreaReachesTheEvents)
@@ -1003,14 +1056,14 @@ TEST(QtHost_MessageBoxAutoDismissesForHeadlessRuns)
   });
   guard.start(500);
 
-  setenv("RALIBRETRO_AUTO_DISMISS_BOXES", "1", 1);
+  menutests::setEnv("RALIBRETRO_AUTO_DISMISS_BOXES", "1");
   const auto t0 = std::chrono::steady_clock::now();
   const int ok = host::messageBox("Game has been paused.", "Performance Problem Detected", 0x0000);
   const int okCancel = host::messageBox("Continue?", "OK or Cancel", 0x0001);
   const int yesNo = host::messageBox("Save?", "Yes or No", 0x0004 | 0x0100);
   const auto elapsedMs =
     std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
-  unsetenv("RALIBRETRO_AUTO_DISMISS_BOXES");
+  menutests::unsetEnv("RALIBRETRO_AUTO_DISMISS_BOXES");
 
   CHECK_EQ(1, ok);
   CHECK_EQ(2, okCancel);

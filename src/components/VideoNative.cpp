@@ -1,6 +1,6 @@
-// Video's Linux-only members (Video.h, #ifndef _WIN32).
+// Video's Qt-host members (Video.h, #ifdef RA_HOST_QT).
 
-#ifndef _WIN32
+#ifdef RA_HOST_QT
 
 #include "Video.h"
 

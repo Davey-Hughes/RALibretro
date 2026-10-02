@@ -38,7 +38,7 @@ bool host::runDialog(DialogSpec& spec)
 int host::messageBox(const char*, const char*, unsigned) { return 1; } // IDOK
 void* host::getProcAddress(const char*) { return nullptr; }
 
-// ---- the Linux Dialog's link to the application
+// ---- the Qt host's Dialog's link to the application
 
 bool dialognative::backgroundInputEnabled() { return false; }
 
@@ -88,6 +88,23 @@ void util::ensureDirectoryExists(const std::string&) {}
 void util::deleteFile(const std::string&) {}
 void* util::loadImage(Logger*, const std::string&, unsigned*, unsigned*, unsigned*) { return nullptr; }
 bool libretro::Core::unserialize(const void*, size_t, std::string*) { return false; }
+
+#ifdef _WIN32
+// On Windows Config.cpp also compiles what _WINDOWS guards: the hardcore check's tables, never called here, and
+// the root folder's conversion from UTF-16. buildSavePaths below does call that one (Config::initRootFolder), so
+// it converts as Util.cpp's does.
+const rc_disallowed_setting_t* RC_CCONV rc_libretro_get_disallowed_settings(const char*) { return nullptr; }
+int RC_CCONV rc_libretro_is_setting_allowed(const rc_disallowed_setting_t*, const char*, const char*) { return 1; }
+
+std::string util::ucharToUtf8(const std::wstring& unicodeString)
+{
+  const int length = static_cast<int>(unicodeString.length());
+  const int needed = WideCharToMultiByte(CP_UTF8, 0, unicodeString.c_str(), length, nullptr, 0, nullptr, nullptr);
+  std::string utf8(static_cast<size_t>(needed), '\0');
+  WideCharToMultiByte(CP_UTF8, 0, unicodeString.c_str(), length, &utf8[0], needed, nullptr, nullptr);
+  return utf8;
+}
+#endif
 
 std::vector<host::DialogSpec> dialoglayout::captureRealDialogs()
 {

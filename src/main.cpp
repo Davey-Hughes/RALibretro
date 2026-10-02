@@ -27,7 +27,7 @@ along with RALibretro.  If not, see <http://www.gnu.org/licenses/>.
 #include "Application.h"
 #include "Util.h"
 
-#ifndef _WIN32
+#ifdef RA_HOST_QT
 #include "host/HostServices.h"
 #endif
 
@@ -69,7 +69,7 @@ void loadROM(const char* path)
   app.loadGame(path);
 }
 
-#ifndef _WIN32
+#ifdef RA_HOST_QT
 void rebuildRAMenu()
 {
   app.markRAMenuDirty();
@@ -85,11 +85,11 @@ extern "C" void abort_handler(int signal_number)
 
 int main(int argc, char* argv[])
 {
-#ifdef _WIN32
+#ifndef RA_HOST_QT
   signal(SIGABRT, &abort_handler);
 #endif
 
-#ifndef _WIN32
+#ifdef RA_HOST_QT
   // The Qt application lives on this thread, from before Application::init to
   // after destroy(): RA_Init finds it and libRA_Integration.so borrows it.
   host::QtApplicationScope qt(argc, argv);
@@ -97,7 +97,7 @@ int main(int argc, char* argv[])
     return 1;
 #endif
 
-#ifdef _WIN32
+#ifndef RA_HOST_QT
   bool ok = app.init("RALibRetro", 640, 480);
   ok &= app.handleArgs(argc, argv);
 #else
@@ -127,7 +127,7 @@ int main(int argc, char* argv[])
 
     app.destroy();
   }
-#ifndef _WIN32
+#ifdef RA_HOST_QT
   else if (inited)
   {
     // init built the Qt host; it must go before the QApplication does

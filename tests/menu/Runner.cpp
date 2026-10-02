@@ -1,6 +1,7 @@
 #include "Check.h"
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 namespace
@@ -19,6 +20,24 @@ bool menutests::add(const char* name, TestFunc func)
 {
   registry().push_back({name, func});
   return true;
+}
+
+void menutests::setEnv(const char* name, const char* value)
+{
+#ifdef _WIN32
+  _putenv_s(name, value);
+#else
+  setenv(name, value, 1);
+#endif
+}
+
+void menutests::unsetEnv(const char* name)
+{
+#ifdef _WIN32
+  _putenv_s(name, ""); // an empty value removes the variable
+#else
+  unsetenv(name);
+#endif
 }
 
 void menutests::fail(const char* file, int line, const std::string& message)

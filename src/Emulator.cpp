@@ -409,7 +409,7 @@ const char* getSystemManufacturer(int system)
   }
 }
 
-#ifdef _WINDOWS
+#if defined(_WINDOWS) && !defined(RA_HOST_QT) // a Win32 dialog; the Qt host has none yet (compat/native_stubs.cpp)
 
 class CoreDialog : public Dialog
 {

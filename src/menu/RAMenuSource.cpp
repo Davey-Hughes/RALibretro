@@ -34,12 +34,20 @@ namespace
 
 std::string menu::toUtf8(const wchar_t* label)
 {
-  // wchar_t is UTF-32 off Windows, the only place this is built
-  static_assert(sizeof(wchar_t) == 4, "labels are read as UTF-32");
+  // wchar_t is UTF-32, except on Windows: UTF-16 there, where a character past U+FFFF is a surrogate pair
+  static_assert(sizeof(wchar_t) == 4 || sizeof(wchar_t) == 2, "labels are read as UTF-32 or UTF-16");
 
   std::string out;
   for (const wchar_t* c = label; *c; ++c)
-    appendUtf8(out, static_cast<char32_t>(*c));
+  {
+    char32_t code = static_cast<char32_t>(*c);
+    if (sizeof(wchar_t) == 2 && code >= 0xD800 && code <= 0xDBFF && c[1] >= 0xDC00 && c[1] <= 0xDFFF)
+    {
+      code = 0x10000 + ((code - 0xD800) << 10) + (static_cast<char32_t>(c[1]) - 0xDC00);
+      ++c;
+    }
+    appendUtf8(out, code); // a surrogate left unpaired is no code point: the replacement character
+  }
 
   return out;
 }

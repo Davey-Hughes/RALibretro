@@ -10,9 +10,9 @@ namespace host
 {
   // The Qt application: constructed on the main thread before anything else,
   // destroyed last. main.cpp holds one. ok() is false when no display can be
-  // reached (WAYLAND_DISPLAY, DISPLAY or QT_QPA_PLATFORM must be set): the
-  // constructor then makes no application, because Qt aborts the process when
-  // its platform plugin cannot start.
+  // reached (off Windows, WAYLAND_DISPLAY, DISPLAY or QT_QPA_PLATFORM must be
+  // set): the constructor then makes no application, because Qt aborts the
+  // process when its platform plugin cannot start.
   class QtApplicationScope
   {
   public:
@@ -53,7 +53,8 @@ namespace host
   // returns the escape answer, so a run nobody can click through still ends.
   int messageBox(const char* text, const char* caption, unsigned mbFlags);
 
-  // Win32 filter strings ("Description\0*.a;*.b\0...\0\0") in, a chosen path or "" out.
+  // Win32 filter strings ("Description\0*.a;*.b\0...\0\0") in, a chosen path or "" out. The path has the
+  // platform's separators ('\' on Windows), as the Win32 dialogs return it.
   std::string openFileDialog(const std::string& win32Filter, const std::string& initialDirectory);
   std::string saveFileDialog(const std::string& win32Filter, const char* defaultExtension,
                              const std::string& initialDirectory);
@@ -65,7 +66,7 @@ namespace host
   // read-only, over an OK button.
   void aboutDialog(const char* logText);
 
-  // A dialog made with components/Dialog.h's calls, as the Linux Dialog (components/DialogNative.cpp) records it:
+  // A dialog made with components/Dialog.h's calls, as the Qt host's Dialog (components/DialogNative.cpp) records it:
   // the title, then the controls in the order they were added. x, y, w and h are the Win32 dialog-unit rectangle
   // the caller passed (signed); the presenter takes only the row order from them.
   struct DialogControl

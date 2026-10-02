@@ -2,7 +2,8 @@
 #define RA_NATIVE_COMPAT_H
 
 /* Shims for MSVC CRT extensions used by RALibretro, so the parts of the
- * frontend that are not Win32-specific can be built natively. */
+ * frontend that are not Win32-specific can be built natively. Force-included
+ * into the Qt build's C++ sources (CMakeLists.txt), on every platform. */
 
 #ifndef _WIN32
 
@@ -108,6 +109,27 @@ inline void Sleep(unsigned long nMilliseconds)
 {
     std::this_thread::sleep_for(std::chrono::milliseconds(nMilliseconds));
 }
+
+#else /* _WIN32 */
+
+/* Windows has the real API, and nothing above is needed. One call changes under
+ * the Qt host: a message box is the host's (host::messageBox), as it is off
+ * Windows above, instead of user32's. */
+#ifdef RA_HOST_QT
+
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#include "host/HostServices.h"
+
+#undef MessageBox
+inline int MessageBox(HWND, const char* sText, const char* sCaption, unsigned nFlags)
+{
+    return host::messageBox(sText, sCaption, nFlags); // a QMessageBox on the main window; IDOK/IDCANCEL/IDYES/IDNO
+}
+
+#endif /* RA_HOST_QT */
 
 #endif /* !_WIN32 */
 

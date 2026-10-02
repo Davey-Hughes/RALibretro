@@ -57,7 +57,7 @@ TEST(HostMenu_FileMenuTitleAndFixedItems)
   CHECK(find(file.items, IDM_SAVE_STATE) != nullptr);
   CHECK(find(file.items, IDM_LOAD_STATE) != nullptr);
   CHECK(find(file.items, IDM_EXIT) != nullptr);
-  // the config dialogs and Manage Cores are not on the Linux menu
+  // the config dialogs and Manage Cores are not on the Qt host's menu
   CHECK(find(file.items, IDM_CORE_CONFIG) == nullptr);
   CHECK(find(file.items, IDM_MANAGE_CORES) == nullptr);
 }
@@ -262,7 +262,7 @@ TEST(HostMenu_SettingsMenu)
   CHECK(background != nullptr);
   if (background != nullptr)
   {
-    CHECK_EQ(std::string("Background Input (always on under Linux)"), background->label);
+    CHECK_EQ(std::string("Background Input (always on)"), background->label);
     CHECK(background->checked);
     CHECK(!background->enabled);
   }

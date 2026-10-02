@@ -4,6 +4,13 @@
 
 #include <QWindow>
 
+#ifdef Q_OS_WIN
+#include <QString>
+
+#include <functional>
+#include <utility>
+#endif
+
 namespace host
 {
   // The OpenGL window the game is drawn into, embedded in the main window with
@@ -18,7 +25,17 @@ namespace host
     // The size in device pixels, as Video wants it.
     void contentSize(int* width, int* height) const;
 
+#ifdef Q_OS_WIN
+    // Called with each title set on this window's HWND from outside Qt (WM_SETTEXT). The Win32 RetroAchievements
+    // library titles the window it is handed (QtHost::gameWindowHandle); a child window shows no title, so the
+    // host passes it on to the main window.
+    void setTitleHandler(std::function<void(const QString&)> handler) { _titleHandler = std::move(handler); }
+#endif
+
   protected:
+#ifdef Q_OS_WIN
+    bool nativeEvent(const QByteArray& eventType, void* message, qintptr* result) override;
+#endif
     void mouseMoveEvent(QMouseEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
@@ -29,5 +46,8 @@ namespace host
     void forwardButton(QMouseEvent* event, bool pressed);
 
     IHostEvents& _events;
+#ifdef Q_OS_WIN
+    std::function<void(const QString&)> _titleHandler;
+#endif
   };
 }

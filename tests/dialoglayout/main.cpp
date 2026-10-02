@@ -8,7 +8,7 @@
 // host::QtApplicationScope: it lives in HostServices.cpp, whose runDialog and messageBox this test fakes.
 int main(int argc, char* argv[])
 {
-  setenv("QT_QPA_PLATFORM", "offscreen", 1);
+  menutests::setEnv("QT_QPA_PLATFORM", "offscreen");
   static char program[] = "ralibretro_dialog_layout_tests";
   static char* args[] = {program, nullptr};
   int count = 1;

@@ -36,7 +36,7 @@ SOFTWARE.
 #include <io.h>
 #endif
 
-#ifndef _WIN32
+#ifdef RA_HOST_QT
 #include "host/HostServices.h" // vsyncEnabled: Qt-free
 #endif
 
@@ -1582,8 +1582,8 @@ bool libretro::Core::handleSystemAVInfoChanged()
 
 void libretro::Core::resetVsync()
 {
-#ifndef _WIN32
-  // No SDL window off Windows: the Qt host fixed the swap interval when it made
+#ifdef RA_HOST_QT
+  // No SDL window under the Qt host, which fixed the swap interval when it made
   // the window (host::swapIntervalForPlatform), and it cannot change after. So
   // no per-game choice here, whatever this core's fps; said once.
   static bool logged = false;

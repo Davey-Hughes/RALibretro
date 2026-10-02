@@ -717,7 +717,7 @@ bool Config::deserializeEmulatorSettings(const char* json)
   return (res == JSONSAX_OK);
 }
 
-#ifdef _WINDOWS
+#if defined(_WINDOWS) && !defined(RA_HOST_QT) // a Win32 dialog; the Qt host has none yet (compat/native_stubs.cpp)
 
 void Config::ConfigDialog::updateVariables()
 {

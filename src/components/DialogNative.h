@@ -1,6 +1,6 @@
 #pragma once
 
-// The Linux Dialog's one link to the application (components/DialogNative.cpp). ApplicationNative.cpp defines it;
+// The Qt host's Dialog's one link to the application (components/DialogNative.cpp). ApplicationNative.cpp defines it;
 // the dialog tests define their own.
 namespace dialognative
 {

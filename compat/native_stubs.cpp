@@ -1,9 +1,9 @@
-/* Native replacements for RALibretro's Win32-only UI entry points.
+/* The Qt host's replacements for RALibretro's Win32-only UI entry points.
  *
- * These keep the frontend runnable on Linux while the real dialogs are still
- * Win32: the file pickers are Qt's, and the core options and cores dialogs report
- * "not available" instead of opening a window. Replacing them is part of the
- * Qt port. */
+ * These keep the frontend runnable under the Qt host, on any platform, while the
+ * real dialogs are still Win32: the file pickers are Qt's, and the core options
+ * and cores dialogs report "not available" instead of opening a window.
+ * Replacing them is part of the Qt port. */
 
 #include "Util.h"
 #include "components/Config.h"

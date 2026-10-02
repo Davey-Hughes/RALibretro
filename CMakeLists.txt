@@ -1,19 +1,37 @@
 cmake_minimum_required(VERSION 3.20)
 project(RALibretroNative CXX C)
 
-# Spike build: compile RALibretro natively for Linux with the system toolchain
-# and system SDL2, instead of cross-compiling a Windows binary with mingw-w64
-# (which is what the Makefile's Linux branch does). Measures how much of the
-# frontend is actually tied to Win32.
+# The Qt build of RALibretro: the Qt host (src/host/qt) owns the window, the menu
+# bar, the dialogs and the OpenGL surface, where RALibretro.sln and the Makefile
+# build the Win32/SDL host. Natively for Linux with the system toolchain and
+# system SDL2, and for Windows with MinGW-w64 (MSYS2 UCRT64: its Qt 6 and SDL2).
+#
+# On Windows, from an MSYS2 UCRT64 shell with its gcc, cmake, ninja, pkgconf, qt6-base and SDL2 packages:
+#   cmake -S . -B build-ucrt64 -G Ninja -DCMAKE_BUILD_TYPE=Release && ninja -C build-ucrt64 && ctest --test-dir build-ucrt64
+# RALibretro.exe then runs from the build folder with C:\msys64\ucrt64\bin on PATH (Qt's and SDL's DLLs), with
+# RA_Integration-x64.dll beside it, or it offers to download one, and with cores in its Cores folder.
+#
+# Two questions, two macros:
+#   RA_HOST_QT  which host this build has. Every target here defines it; the
+#               Win32/SDL builds never do. Shared sources test it wherever the
+#               choice is "SDL window and Win32 menu, or the Qt host".
+#   _WIN32      which operating system: path separators, .dll or .so, headers,
+#               and which RetroAchievements library is loaded. On Windows that
+#               is the Win32 RA_Integration DLL, through RA_Interface.cpp, as
+#               the Win32 host loads it; elsewhere libRA_Integration.so.
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+add_compile_definitions(RA_HOST_QT)
+
 # Fail a single translation unit after 180s instead of letting it spin (a C file
 # force-including a C++ header under -ferror-limit=0 can loop in error recovery).
+# Not on Windows: the launcher's command line loses the quotes around Qt's
+# defines there, and the compiler is then given no input file.
 find_program(TIMEOUT_EXE timeout)
-if(TIMEOUT_EXE)
+if(TIMEOUT_EXE AND NOT WIN32)
   set(CMAKE_C_COMPILER_LAUNCHER ${TIMEOUT_EXE} 180)
   set(CMAKE_CXX_COMPILER_LAUNCHER ${TIMEOUT_EXE} 180)
 endif()
@@ -22,6 +40,41 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(SDL2 REQUIRED sdl2)
 find_package(OpenGL REQUIRED)
 find_package(Qt6 REQUIRED COMPONENTS Core Widgets OpenGL Test)
+
+if(WIN32)
+  enable_language(RC)
+
+  # The Win32 library's loader, which downloads the DLL with WinHTTP. Without its progress dialog and without
+  # TaskDialog, as the Makefile builds it with MinGW.
+  set(RA_LOADER_SOURCE src/RAInterface/RA_Interface.cpp)
+  set_source_files_properties(src/RAInterface/RA_Interface.cpp PROPERTIES COMPILE_DEFINITIONS RA_NOPROGRESS)
+  # _WINDOWS is the sources' "the Windows application, not RAHasher": Unicode paths, the virtual file system, the
+  # hardcore checks, downloads. NOMINMAX as RALibretro.vcxproj has it.
+  set(PLATFORM_DEFINITIONS _WINDOWS NOMINMAX)
+  # No compat/ on the include path: its wtypes.h would shadow the real one. native_compat.h is force-included by
+  # its path instead.
+  set(PLATFORM_INCLUDE_DIRS)
+  set(NATIVE_COMPAT_H ${CMAKE_CURRENT_SOURCE_DIR}/compat/native_compat.h)
+  set(PLATFORM_LIBRARIES winhttp gdi32 imm32 comdlg32 shell32 ole32)
+  # MinGW-w64 GCC ships neither sanitizer runtime.
+  set(TEST_SANITIZE_OPTIONS)
+else()
+  set(RA_LOADER_SOURCE src/RAInterface/RA_Interface_posix.cpp)
+  set(PLATFORM_DEFINITIONS)
+  set(PLATFORM_INCLUDE_DIRS compat)
+  set(NATIVE_COMPAT_H native_compat.h)
+  set(PLATFORM_LIBRARIES dl pthread)
+  set(TEST_SANITIZE_OPTIONS -fsanitize=address,undefined)
+endif()
+
+# src/RA_BuildVer.h, from the last tag and the commits since it, as RALibretro.vcxproj and the Makefile make it
+# (the same script, into the same place). Run on every build; the script rewrites the file only when it changes.
+find_program(BASH_EXE bash REQUIRED)
+add_custom_target(ralibretro_buildver
+  COMMAND ${BASH_EXE} src/RAInterface/MakeBuildVer.sh src/RA_BuildVer.h "" RA_LIBRETRO
+  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+  BYPRODUCTS ${CMAKE_CURRENT_SOURCE_DIR}/src/RA_BuildVer.h
+  VERBATIM)
 
 set(SOURCES_C
   src/dynlib/dynlib.c
@@ -47,7 +100,7 @@ set(SOURCES_C
 set(SOURCES_CXX
   src/libretro/BareCore.cpp
   src/libretro/Core.cpp
-  src/RAInterface/RA_Interface_posix.cpp
+  ${RA_LOADER_SOURCE}
   src/RA_Implementation.cpp
   src/components/Audio.cpp
   src/components/Config.cpp
@@ -91,7 +144,7 @@ target_include_directories(ralibretro_menu SYSTEM PRIVATE ${SDL2_INCLUDE_DIRS})
 target_compile_options(ralibretro_menu PRIVATE ${MENU_WARNINGS})
 
 # --- the Qt host ---------------------------------------------------------------
-# Linux only. Its own target so native_compat.h's force-include never reaches a
+# Its own target so native_compat.h's force-include never reaches a
 # Qt header, and so Application.cpp never sees one: the two Qt-free headers
 # under src/host are the whole boundary.
 add_library(ralibretro_qthost STATIC
@@ -125,23 +178,101 @@ target_compile_options(ralibretro_qthost_tests PRIVATE -Wall -Wextra)
 add_test(NAME qthost COMMAND ralibretro_qthost_tests)
 
 add_executable(RALibretro ${SOURCES_C} ${SOURCES_CXX})
+add_dependencies(RALibretro ralibretro_buildver)
 
 # How the application compiles its sources. ralibretro_dialog_callsites (below) compiles some of them the same way.
-set(APP_INCLUDE_DIRS compat src src/libretro src/rcheevos/include src/rcheevos/src src/RAInterface src/miniz
-    src/jsonsax src/libmincrypt)
-# Same defines as the Makefile, minus _WINDOWS.
-set(APP_DEFINITIONS OUTSIDE_SPEEX RANDOM_PREFIX=speex EXPORT= _USE_SSE2 FIXED_POINT LOG_TO_FILE RA_NOTASKDIALOG)
+set(APP_INCLUDE_DIRS ${PLATFORM_INCLUDE_DIRS} src src/libretro src/rcheevos/include src/rcheevos/src src/RAInterface
+    src/miniz src/jsonsax src/libmincrypt)
+# Same defines as the Makefile; _WINDOWS on Windows only (PLATFORM_DEFINITIONS).
+set(APP_DEFINITIONS OUTSIDE_SPEEX RANDOM_PREFIX=speex EXPORT= _USE_SSE2 FIXED_POINT LOG_TO_FILE RA_NOTASKDIALOG
+    ${PLATFORM_DEFINITIONS})
 # native_compat.h is C++; force-include it only for C++ sources
 set(APP_COMPILE_OPTIONS -Wno-unknown-pragmas $<$<COMPILE_LANGUAGE:CXX>:-include>
-    $<$<COMPILE_LANGUAGE:CXX>:native_compat.h>)
+    $<$<COMPILE_LANGUAGE:CXX>:${NATIVE_COMPAT_H}>)
 
 target_include_directories(RALibretro PRIVATE ${APP_INCLUDE_DIRS})
 target_compile_definitions(RALibretro PRIVATE ${APP_DEFINITIONS})
 target_compile_options(RALibretro PRIVATE ${APP_COMPILE_OPTIONS})
 target_include_directories(RALibretro PRIVATE ${SDL2_INCLUDE_DIRS})
-target_link_libraries(RALibretro PRIVATE ${SDL2_LIBRARIES} OpenGL::GL dl pthread ralibretro_menu ralibretro_qthost)
+target_link_libraries(RALibretro PRIVATE ${SDL2_LIBRARIES} OpenGL::GL ${PLATFORM_LIBRARIES} ralibretro_menu
+    ralibretro_qthost)
 
-# Application's Linux-only members are new code too; unlike the menu they are
+if(WIN32)
+  # A windowed program, as the Win32 host is: no console. SDL2main supplies WinMain.
+  set_target_properties(RALibretro PROPERTIES WIN32_EXECUTABLE TRUE)
+  # The icon (src/retroarch.ico, which the resource compiler finds through the include path above).
+  target_sources(RALibretro PRIVATE src/host/qt/RALibretro.rc)
+endif()
+
+# --- CHD disc images ---------------------------------------------------------------
+# src/HashCHD.cpp and libchdr (src/libchdr, with the lzma, zlib and zstd it carries), so a .chd can be identified:
+# what RALibretro.sln builds as libchdr.vcxproj with HAVE_CHD, and the Makefile with HAVE_CHD=1. On by default on
+# Windows, where the Win32 host has it; off elsewhere until it has been built and tried there.
+if(WIN32)
+  set(RA_ENABLE_CHD_DEFAULT ON)
+else()
+  set(RA_ENABLE_CHD_DEFAULT OFF)
+endif()
+option(RA_ENABLE_CHD "Identify CHD disc images (builds src/libchdr)" ${RA_ENABLE_CHD_DEFAULT})
+if(RA_ENABLE_CHD)
+  # The Makefile's list (Makefile.common, CHD_OBJS), with its defines and include paths. Not libchdr's own
+  # CMakeLists.txt: the zlib it carries renames zconf.h in the source tree when configured, which dirties the
+  # submodule and breaks libchdr.vcxproj.
+  set(CHD src/libchdr)
+  add_library(ralibretro_chd STATIC
+    ${CHD}/deps/lzma-24.05/src/Alloc.c
+    ${CHD}/deps/lzma-24.05/src/Bra86.c
+    ${CHD}/deps/lzma-24.05/src/BraIA64.c
+    ${CHD}/deps/lzma-24.05/src/CpuArch.c
+    ${CHD}/deps/lzma-24.05/src/Delta.c
+    ${CHD}/deps/lzma-24.05/src/LzFind.c
+    ${CHD}/deps/lzma-24.05/src/Lzma86Dec.c
+    ${CHD}/deps/lzma-24.05/src/LzmaDec.c
+    ${CHD}/deps/lzma-24.05/src/LzmaEnc.c
+    ${CHD}/deps/lzma-24.05/src/Sort.c
+    ${CHD}/deps/zlib-1.3.1/adler32.c
+    ${CHD}/deps/zlib-1.3.1/compress.c
+    ${CHD}/deps/zlib-1.3.1/crc32.c
+    ${CHD}/deps/zlib-1.3.1/deflate.c
+    ${CHD}/deps/zlib-1.3.1/gzclose.c
+    ${CHD}/deps/zlib-1.3.1/gzlib.c
+    ${CHD}/deps/zlib-1.3.1/gzread.c
+    ${CHD}/deps/zlib-1.3.1/gzwrite.c
+    ${CHD}/deps/zlib-1.3.1/infback.c
+    ${CHD}/deps/zlib-1.3.1/inffast.c
+    ${CHD}/deps/zlib-1.3.1/inflate.c
+    ${CHD}/deps/zlib-1.3.1/inftrees.c
+    ${CHD}/deps/zlib-1.3.1/trees.c
+    ${CHD}/deps/zlib-1.3.1/uncompr.c
+    ${CHD}/deps/zlib-1.3.1/zutil.c
+    ${CHD}/deps/zstd-1.5.6/lib/common/debug.c
+    ${CHD}/deps/zstd-1.5.6/lib/common/entropy_common.c
+    ${CHD}/deps/zstd-1.5.6/lib/common/error_private.c
+    ${CHD}/deps/zstd-1.5.6/lib/common/fse_decompress.c
+    ${CHD}/deps/zstd-1.5.6/lib/common/pool.c
+    ${CHD}/deps/zstd-1.5.6/lib/common/threading.c
+    ${CHD}/deps/zstd-1.5.6/lib/common/xxhash.c
+    ${CHD}/deps/zstd-1.5.6/lib/common/zstd_common.c
+    ${CHD}/deps/zstd-1.5.6/lib/decompress/huf_decompress.c
+    ${CHD}/deps/zstd-1.5.6/lib/decompress/zstd_ddict.c
+    ${CHD}/deps/zstd-1.5.6/lib/decompress/zstd_decompress.c
+    ${CHD}/deps/zstd-1.5.6/lib/decompress/zstd_decompress_block.c
+    ${CHD}/src/libchdr_bitstream.c
+    ${CHD}/src/libchdr_cdrom.c
+    ${CHD}/src/libchdr_chd.c
+    ${CHD}/src/libchdr_flac.c
+    ${CHD}/src/libchdr_huffman.c
+  )
+  target_include_directories(ralibretro_chd PUBLIC ${CHD}/include
+    PRIVATE ${CHD}/deps/lzma-24.05/include ${CHD}/deps/zlib-1.3.1 ${CHD}/deps/zstd-1.5.6/lib)
+  target_compile_definitions(ralibretro_chd PRIVATE Z7_ST ZSTD_DISABLE_ASM)
+
+  target_sources(RALibretro PRIVATE src/HashCHD.cpp)
+  target_compile_definitions(RALibretro PRIVATE HAVE_CHD)
+  target_link_libraries(RALibretro PRIVATE ralibretro_chd)
+endif()
+
+# Application's Qt-host members are new code too; unlike the menu they are
 # part of the application, and keep its force-include.
 set_source_files_properties(src/ApplicationNative.cpp src/components/DialogNative.cpp PROPERTIES COMPILE_OPTIONS "${MENU_WARNINGS}")
 
@@ -165,6 +296,18 @@ endforeach()
 add_custom_target(ralibretro_overlay_files ALL DEPENDS ${OVERLAY_COPIES})
 add_dependencies(RALibretro ralibretro_overlay_files)
 
+# --- the list of cores ---------------------------------------------------------------
+# etc/cores.json beside the executable as Cores/cores.json, which RALibretro refuses to start without: what
+# RALibretro.vcxproj's post-build step copies into bin/Cores. Copied when it is missing or etc/cores.json changes.
+set(CORES_JSON_COPY ${CMAKE_CURRENT_BINARY_DIR}/Cores/cores.json)
+add_custom_command(OUTPUT ${CORES_JSON_COPY}
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/Cores
+  COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/etc/cores.json ${CORES_JSON_COPY}
+  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/etc/cores.json
+  VERBATIM)
+add_custom_target(ralibretro_cores_json ALL DEPENDS ${CORES_JSON_COPY})
+add_dependencies(RALibretro ralibretro_cores_json)
+
 # --- native menu tests ---------------------------------------------------------
 # The menu's logic has unit tests of its own: RALibretro has no test framework.
 # The tests run under ASan and UBSan, so they compile the menu sources
@@ -185,13 +328,13 @@ add_executable(ralibretro_menu_tests
 target_include_directories(ralibretro_menu_tests PRIVATE src src/RAInterface src/rcheevos/include ${SDL2_INCLUDE_DIRS})
 target_link_libraries(ralibretro_menu_tests PRIVATE Qt6::Core ${SDL2_LIBRARIES})
 target_compile_options(ralibretro_menu_tests PRIVATE
-  ${MENU_WARNINGS} -fsanitize=address,undefined -fno-omit-frame-pointer)
-target_link_options(ralibretro_menu_tests PRIVATE -fsanitize=address,undefined)
+  ${MENU_WARNINGS} ${TEST_SANITIZE_OPTIONS} -fno-omit-frame-pointer)
+target_link_options(ralibretro_menu_tests PRIVATE ${TEST_SANITIZE_OPTIONS})
 
 enable_testing()
 add_test(NAME menu COMMAND ralibretro_menu_tests)
 
-# --- the Linux Dialog's tests ---------------------------------------------------
+# --- the Qt host's Dialog's tests -------------------------------------------------
 # components/DialogNative.cpp without Qt: a fake host::runDialog answers for the user. Under the sanitizers, as
 # the menu tests are, so compiled here rather than linked from the application.
 add_executable(ralibretro_dialog_tests
@@ -200,11 +343,11 @@ add_executable(ralibretro_dialog_tests
   tests/dialog/DialogNative_tests.cpp
   src/components/DialogNative.cpp
 )
-target_include_directories(ralibretro_dialog_tests PRIVATE src compat tests/menu ${SDL2_INCLUDE_DIRS})
+target_include_directories(ralibretro_dialog_tests PRIVATE src ${PLATFORM_INCLUDE_DIRS} tests/menu ${SDL2_INCLUDE_DIRS})
 target_link_libraries(ralibretro_dialog_tests PRIVATE ${SDL2_LIBRARIES})
 target_compile_options(ralibretro_dialog_tests PRIVATE
-  ${MENU_WARNINGS} -fsanitize=address,undefined -fno-omit-frame-pointer)
-target_link_options(ralibretro_dialog_tests PRIVATE -fsanitize=address,undefined)
+  ${MENU_WARNINGS} ${TEST_SANITIZE_OPTIONS} -fno-omit-frame-pointer)
+target_link_options(ralibretro_dialog_tests PRIVATE ${TEST_SANITIZE_OPTIONS})
 add_test(NAME dialog COMMAND ralibretro_dialog_tests)
 
 # --- the three builder dialogs, from their real call sites ------------------------

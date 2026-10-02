@@ -1,8 +1,9 @@
 #pragma once
 
-// Linux only (ApplicationNative.cpp and tests/menu). While paused or with no game no frame runs, and so no present
-// carries the RetroAchievements overlay: the paused loop presents again when the overlay changed. Windows' overlay
-// is a window of its own and needs none of this.
+// The Qt host only (ApplicationNative.cpp and tests/menu). While paused or with no game no frame runs, and so no
+// present carries the RetroAchievements overlay: the paused loop presents again when the overlay changed. On Windows
+// the Win32 library's overlay is a window of its own and there is no overlay to carry (the serial stays 0); what is
+// left there is the present after an expose.
 
 #include "Fsm.h"
 

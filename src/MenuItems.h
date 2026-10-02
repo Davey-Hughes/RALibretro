@@ -1,8 +1,8 @@
 #pragma once
 
 // Which File/Settings items each FSM state enables. Application::updateMenu
-// applies these to the Win32 menu; the Linux menu builder (menu/HostMenu.cpp)
-// reads the same tables. One copy, so the two platforms cannot drift.
+// applies these to the Win32 menu; the Qt host's menu builder (menu/HostMenu.cpp)
+// reads the same tables. One copy, so the two hosts cannot drift.
 
 #include "Fsm.h"
 #include "resource.h"

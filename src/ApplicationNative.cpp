@@ -1,7 +1,7 @@
-// Application's Linux-only members: the Qt host window's events (host::IHostEvents)
+// Application's Qt-host members: the Qt host window's events (host::IHostEvents)
 // and the work other threads hand to the main thread. Built by CMakeLists.txt only.
 
-#ifndef _WIN32
+#ifdef RA_HOST_QT
 
 // Shared headers this file alone compiles with -Wextra: Components.h's NDEBUG
 // debug() stub and Dialog.h's default dialogProc (through Input.h) leave
@@ -203,10 +203,13 @@ void Application::createMenuBar()
   // here About is last, where a menu bar's help and about entries go.
   _host->buildMenuBar(_menuSources, _menuSources.size());
 
+#ifndef _WIN32
   // And the RetroAchievements overlay, which every present draws over the
-  // picture: here because this is the one Linux-only step of init, and it runs
-  // once the video context exists (Windows' overlay is a window of its own).
+  // picture: here because this is the one Qt-only step of init, and it runs
+  // once the video context exists. Not on Windows, where the Win32 library's
+  // overlay is a window of its own, laid over the game area (g_mainWindow).
   _videoContext->setOverlaySource(RA_UpdateOverlayImage);
+#endif
 }
 
 // ---- the overlay's keys
@@ -260,7 +263,7 @@ void Application::s_pauseForBadPerformance(void* app)
     self->pauseForBadPerformance();
 }
 
-// ---- the Linux Dialog's link to the application (components/DialogNative.h)
+// ---- the Qt host's Dialog's link to the application (components/DialogNative.h)
 
 // File scope, as Core.cpp's: a block-scope extern here would bind within namespace dialognative (the function's
 // namespace, not the global one), leaving the real ::app unresolved at link time.

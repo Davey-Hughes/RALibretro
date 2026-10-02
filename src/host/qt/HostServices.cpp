@@ -11,6 +11,7 @@
 #include <QApplication>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QDir>
 #include <QFileDialog>
 #include <QLabel>
 #include <QMessageBox>
@@ -79,12 +80,14 @@ namespace
 
 host::QtApplicationScope::QtApplicationScope(int& argc, char** argv)
 {
+#ifndef Q_OS_WIN // Windows always has a desktop to open a window on, and names it with no variable
   if (std::getenv("WAYLAND_DISPLAY") == nullptr && std::getenv("DISPLAY") == nullptr &&
       std::getenv("QT_QPA_PLATFORM") == nullptr)
   {
     std::fprintf(stderr, "RALibretro: no display. Set WAYLAND_DISPLAY, DISPLAY or QT_QPA_PLATFORM.\n");
     return;
   }
+#endif
 
   // Fixed before the application exists: every window created later gets it.
   // Not the swap interval: that depends on the platform, known only once the
@@ -263,7 +266,8 @@ std::string host::openFileDialog(const std::string& win32Filter, const std::stri
   const QString path = QFileDialog::getOpenFileName(s_dialogParent, QStringLiteral("Load"),
                                                     QString::fromStdString(initialDirectory),
                                                     QString::fromStdString(toQtFileFilter(win32Filter)));
-  return path.toStdString();
+  // Qt's paths have '/' everywhere; the application splits a path at the platform's separator (util::directory)
+  return QDir::toNativeSeparators(path).toStdString();
 }
 
 std::string host::saveFileDialog(const std::string& win32Filter, const char* defaultExtension,
@@ -283,7 +287,7 @@ std::string host::saveFileDialog(const std::string& win32Filter, const char* def
     return std::string();
 
   const QStringList files = dialog.selectedFiles();
-  return files.isEmpty() ? std::string() : files.first().toStdString();
+  return files.isEmpty() ? std::string() : QDir::toNativeSeparators(files.first()).toStdString();
 }
 
 void host::aboutDialog(const char* logText)

@@ -1,0 +1,4 @@
+// The Qt build's Windows resources: the icon alone. The Win32 host's menu.rc also holds its menu, which the Qt
+// host builds itself. Qt gives its windows the icon named IDI_ICON1; Explorer shows an executable's first icon.
+
+IDI_ICON1 ICON "retroarch.ico"

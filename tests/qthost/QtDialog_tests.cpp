@@ -331,9 +331,9 @@ TEST(QtDialog_RunDialogAutoDismissedShowsNothing)
   CHECK(host.create("test", 64, 64));
   const size_t linesBefore = logger.lines.size();
 
-  setenv("RALIBRETRO_AUTO_DISMISS_BOXES", "1", 1);
+  menutests::setEnv("RALIBRETRO_AUTO_DISMISS_BOXES", "1");
   const bool answer = host::runDialog(spec);
-  unsetenv("RALIBRETRO_AUTO_DISMISS_BOXES");
+  menutests::unsetEnv("RALIBRETRO_AUTO_DISMISS_BOXES");
   qApp->removeEventFilter(&counter);
   CHECK(!answer);
   CHECK_EQ(0, counter.dialogsShown);

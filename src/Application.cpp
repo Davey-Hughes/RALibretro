@@ -20,7 +20,7 @@ along with RALibretro.  If not, see <http://www.gnu.org/licenses/>.
 #include "Application.h"
 #include "RA_BuildVer.h"
 
-#ifdef _WIN32
+#ifndef RA_HOST_QT
 #include <SDL_syswm.h>
 #endif
 
@@ -41,7 +41,7 @@ along with RALibretro.  If not, see <http://www.gnu.org/licenses/>.
 #include "resource.h"
 #include "MenuItems.h"
 
-#ifndef _WIN32
+#ifdef RA_HOST_QT
 #include "host/HostServices.h"
 #include "host/qt/QtHost.h"
 #include "host/qt/QtVideoContext.h"
@@ -101,7 +101,7 @@ Application::Application(): _fsm(*this)
 {
   _components.logger       = &_logger;
   _components.config       = &_config;
-#ifdef _WIN32
+#ifndef RA_HOST_QT
   _components.videoContext = &_videoContext;
 #else
   _components.videoContext = NULL; // init() points it at the Qt host's context
@@ -175,10 +175,10 @@ bool Application::init(const char* title, int width, int height)
   inited = kAllocatorInited;
 
   // Setup SDL
-#ifdef _WIN32
+#ifndef RA_HOST_QT
   if (SDL_Init(SDL_INIT_EVERYTHING) != 0)
 #else
-  // No SDL window off Windows: the Qt host owns the window, the GL surface and
+  // No SDL window under the Qt host: the host owns the window, the GL surface and
   // the keyboard and mouse. SDL keeps audio, controllers, haptics and its event
   // queue (SDL_QUIT from Ctrl+C and SIGTERM still arrives through it).
   if (SDL_Init(SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER | SDL_INIT_HAPTIC | SDL_INIT_EVENTS) != 0)
@@ -209,7 +209,7 @@ bool Application::init(const char* title, int width, int height)
     int window_x = SDL_WINDOWPOS_CENTERED, window_y = SDL_WINDOWPOS_CENTERED;
 
     loadConfiguration(&window_x, &window_y, &width, &height);
-#ifdef _WIN32
+#ifndef RA_HOST_QT
     if (window_y != SDL_WINDOWPOS_CENTERED)
     {
       // captured window position includes menu bar, which won't exist at initial positioning
@@ -234,20 +234,29 @@ bool Application::init(const char* title, int width, int height)
 
     _window = SDL_CreateWindow(title, window_x, window_y, width, height, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
 #else
-    // A Wayland client cannot place its window: the saved position is read and ignored.
-    (void)window_x;
-    (void)window_y;
+    // The saved position, when the configuration has one. The host uses it where the window system lets a
+    // window be placed and the position is still on a screen; a Wayland client cannot place its window at all.
+    // 0,0 is not one: this host used to save that for "unknown", and a configuration it wrote then must not pin
+    // the window to the desktop's corner where windows can be placed.
+    const bool positioned = window_x != SDL_WINDOWPOS_CENTERED && window_y != SDL_WINDOWPOS_CENTERED &&
+                            !(window_x == 0 && window_y == 0);
 
     _host = std::make_unique<host::QtHost>(&_logger, *this);
-    if (!_host->create(title, width, height))
+    if (!_host->create(title, width, height, positioned ? &window_x : nullptr, positioned ? &window_y : nullptr))
     {
       _logger.error(TAG "Could not create the Qt host window");
       goto error;
     }
+#ifdef _WIN32
+    // The Win32 RetroAchievements library lays its overlay window over this window's client area, owns its
+    // dialogs by it and reads its pixels for screenshots: the game area, not the frame, whose client area holds
+    // the Qt menu bar too. Off Windows the handle is reserved and stays NULL (RA_Interface.h).
+    g_mainWindow = static_cast<HWND>(_host->gameWindowHandle());
+#endif
 #endif
   }
 
-#ifdef _WIN32
+#ifndef RA_HOST_QT
   if (_window == NULL)
   {
     _logger.error(TAG "SDL_CreateWindow: %s", SDL_GetError());
@@ -255,7 +264,6 @@ bool Application::init(const char* title, int width, int height)
   }
   else
   {
-#ifdef _WIN32
     SDL_SysWMinfo wminfo;
     SDL_VERSION(&wminfo.version);
 
@@ -268,7 +276,6 @@ bool Application::init(const char* title, int width, int height)
     g_mainWindow = wminfo.info.win.window;
     _menu = LoadMenu(NULL, "MAIN");
     SetMenu(g_mainWindow, _menu);
-#endif
 
     SDL_SetWindowSize(_window, width, height);
 
@@ -337,7 +344,7 @@ bool Application::init(const char* title, int width, int height)
 
   inited = kInputInited;
 
-#ifdef _WIN32
+#ifndef RA_HOST_QT
   if (!_videoContext.init(&_logger, _window))
 #else
   _videoContext = std::make_unique<host::QtVideoContext>();
@@ -360,7 +367,7 @@ bool Application::init(const char* title, int width, int height)
 
   inited = kGlInited;
 
-#ifdef _WIN32
+#ifndef RA_HOST_QT
   if (!_video.init(&_logger, &_videoContext, &_config))
 #else
   if (!_video.init(&_logger, _videoContext.get(), &_config))
@@ -376,7 +383,7 @@ bool Application::init(const char* title, int width, int height)
     // created with. Without this the video component never learns the size
     // and lays out every frame against a 0x0 window.
     int windowWidth, windowHeight;
-#ifdef _WIN32
+#ifndef RA_HOST_QT
     SDL_GetWindowSize(_window, &windowWidth, &windowHeight);
 #else
     _host->contentSize(&windowWidth, &windowHeight); // device pixels, as every size Video sees
@@ -385,13 +392,13 @@ bool Application::init(const char* title, int width, int height)
   }
 
   inited = kVideoInited;
-#ifndef _WIN32
+#ifdef RA_HOST_QT
   _videoReady = true; // from here onResized may reach _video
 #endif
 
   {
+#ifndef RA_HOST_QT
     _cdRomMenu = GetSubMenu(GetSubMenu(_menu, 0), CDROM_MENU_INDEX);
-#ifdef _WIN32
     assert(GetMenuItemID(_cdRomMenu, 0) == IDM_CD_OPEN_TRAY);
 #endif
 
@@ -403,7 +410,7 @@ bool Application::init(const char* title, int width, int height)
 
     buildSystemsMenu();
 
-#ifndef _WIN32
+#ifdef RA_HOST_QT
     createMenuBar(); // before RA_Init, whose RebuildMenu marks the RetroAchievements menu dirty
 #endif
 
@@ -428,20 +435,20 @@ bool Application::init(const char* title, int width, int height)
 
   updateMenu();
   updateDiscMenu(true);
-#ifndef _WIN32
+#ifdef RA_HOST_QT
   _inputReady = true; // from here onKey and the mouse handlers may act
 #endif
   return true;
 
 error:
-#ifndef _WIN32
+#ifdef RA_HOST_QT
   _videoReady = false;
 #endif
   switch (inited)
   {
   case kVideoInited:        _video.destroy();
   case kGlInited:           // nothing to undo
-#ifdef _WIN32
+#ifndef RA_HOST_QT
   case kVideoContextInited: _videoContext.destroy();
 #else
   case kVideoContextInited: _videoContext.reset();
@@ -451,7 +458,7 @@ error:
   case kFifoInited:         _fifo.destroy();
   case kAudioDeviceInited:  _microphone.destroy();
                             SDL_CloseAudioDevice(_audioDev);
-#ifdef _WIN32
+#ifndef RA_HOST_QT
   case kWindowInited:       SDL_DestroyWindow(_window);
 #else
   case kWindowInited:       _videoContext.reset(); // a context left by a failed init must not outlive its surface
@@ -465,7 +472,7 @@ error:
   case kNothingInited:      break;
   }
 
-#ifndef _WIN32
+#ifdef RA_HOST_QT
   // A step that failed may have left its Qt object behind (the video context
   // when its init fails, the host when create() does), and the ladder above
   // only undoes finished steps. main() skips destroy() after a failed init,
@@ -481,7 +488,7 @@ error:
 
 void Application::processEvents()
 {
-#ifndef _WIN32
+#ifdef RA_HOST_QT
   {
     // Qt first: window, keyboard and mouse events, the menu bar, and the
     // toolkit's posted work. A dialog opened by a handler blocks here, as a
@@ -649,7 +656,7 @@ void Application::runSmoothed()
       // do five frames without audio
       runTurbo();
       numFrames += 5;
-#ifndef _WIN32
+#ifdef RA_HOST_QT
       _framesRun += 5;
 #endif
     }
@@ -661,7 +668,7 @@ void Application::runSmoothed()
 
       _audioGeneratedDuringFastForward = 0;
       ++numFrames;
-#ifndef _WIN32
+#ifdef RA_HOST_QT
       ++_framesRun;
 #endif
     }
@@ -751,7 +758,7 @@ void Application::run()
           // do one frame without audio
           _core.step(true, false);
           RA_DoAchievementsFrame();
-#ifndef _WIN32
+#ifdef RA_HOST_QT
           ++_framesRun;
 #endif
 
@@ -774,7 +781,7 @@ void Application::run()
         input.m_bConfirmPressed = _input.read(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_A) != 0;
         input.m_bCancelPressed = _input.read(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_B) != 0;
         input.m_bQuitPressed = _input.read(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_START) != 0;
-#ifndef _WIN32
+#ifdef RA_HOST_QT
         addOverlayKeys(input); // the arrow keys, Enter and Backspace too, whatever controller 1 is bound to
 #endif
 
@@ -808,7 +815,7 @@ void Application::saveConfiguration()
   json += _states.serializeSettings();
 
   // window position
-#ifdef _WIN32
+#ifndef RA_HOST_QT
   const Uint32 flags = SDL_GetWindowFlags(_window);
   if (flags & SDL_WINDOW_FULLSCREEN_DESKTOP)
 #else
@@ -825,15 +832,17 @@ void Application::saveConfiguration()
     json += ",\"window\":{";
 
     int x, y;
-#ifdef _WIN32
+#ifndef RA_HOST_QT
     SDL_GetWindowPosition(_window, &x, &y);
-    json += "\"x\":" + std::to_string(x) + ",\"y\":" + std::to_string(y);
+    json += "\"x\":" + std::to_string(x) + ",\"y\":" + std::to_string(y) + ",";
 
     SDL_GetWindowSize(_window, &x, &y);
 #else
-    // a Wayland client can neither read nor set its window's position; the
-    // size is the render area's, which is what create() sizes next time
-    json += "\"x\":0,\"y\":0";
+    // The position where the window system tells it: a Wayland client can neither read nor set its window's,
+    // and then none is saved. The size is the render area's, which is what create() sizes next time.
+    if (_host->position(&x, &y))
+      json += "\"x\":" + std::to_string(x) + ",\"y\":" + std::to_string(y) + ",";
+
     _host->contentSize(&x, &y);
 #endif
     switch (_video.getRotation())
@@ -851,7 +860,7 @@ void Application::saveConfiguration()
         break;
     }
 
-    json += ",\"w\":" + std::to_string(x) + ",\"h\":" + std::to_string(y);
+    json += "\"w\":" + std::to_string(x) + ",\"h\":" + std::to_string(y);
 
     json += "}";
   }
@@ -868,7 +877,7 @@ void Application::saveConfiguration()
 
 void Application::destroy()
 {
-#ifndef _WIN32
+#ifdef RA_HOST_QT
   _inputReady = false; // keys and the mouse still arrive from any modal shutdown pumps
 #endif
   _logger.info(TAG "begin shutdown");
@@ -880,7 +889,7 @@ void Application::destroy()
   if (_gameData)
     free(_gameData);
 
-#ifndef _WIN32
+#ifdef RA_HOST_QT
   _videoReady = false;
 #endif
   _video.destroy();
@@ -892,7 +901,7 @@ void Application::destroy()
   _fifo.destroy();
 
   SDL_CloseAudioDevice(_audioDev);
-#ifdef _WIN32
+#ifndef RA_HOST_QT
   SDL_DestroyWindow(_window);
 #else
   _videoContext.reset(); // the contexts; _video.destroy() above released what they held
@@ -909,7 +918,7 @@ void Application::destroy()
 
   _allocator.destroy();
 
-#ifndef _WIN32
+#ifdef RA_HOST_QT
   const unsigned droppedPosts = host::droppedPosts();
   if (droppedPosts > 0)
     _logger.warn("[QT] %u posted calls dropped after the host was gone", droppedPosts);
@@ -1045,11 +1054,6 @@ bool Application::loadCore(const std::string& coreName)
   }
   RA_SetUserAgentDetail(coreDetail.c_str());
 
-  MENUITEMINFO info;
-  memset(&info, 0, sizeof(info));
-  info.cbSize = sizeof(info);
-  info.fMask = MIIM_TYPE | MIIM_DATA;
-
   switch (_system)
   {
   case RC_CONSOLE_AMIGA:
@@ -1068,26 +1072,30 @@ bool Application::loadCore(const std::string& coreName)
   case RC_CONSOLE_SHARPX1:
   case RC_CONSOLE_VIC20:
   case RC_CONSOLE_ZX_SPECTRUM:
-    info.dwTypeData = (LPSTR)"Insert Disk";
-    SetMenuItemInfo(_menu, IDM_CD_OPEN_TRAY, false, &info);
-    info.dwTypeData = (LPSTR)"Floppy Drive";
-    SetMenuItemInfo(GetSubMenu(_menu, 0), CDROM_MENU_INDEX, true, &info);
     _isDriveFloppy = true;
     break;
 
   default:
-    info.dwTypeData = (LPSTR)"Close Tray";
-    SetMenuItemInfo(_menu, IDM_CD_OPEN_TRAY, false, &info);
-    info.dwTypeData = (LPSTR)"CD-ROM";
-    SetMenuItemInfo(GetSubMenu(_menu, 0), CDROM_MENU_INDEX, true, &info);
     _isDriveFloppy = false;
     break;
   }
+
+#ifndef RA_HOST_QT // the Qt menu bar words the drive from _isDriveFloppy when the menu opens (menu/HostMenu.cpp)
+  MENUITEMINFO info;
+  memset(&info, 0, sizeof(info));
+  info.cbSize = sizeof(info);
+  info.fMask = MIIM_TYPE | MIIM_DATA;
+
+  info.dwTypeData = (LPSTR)(_isDriveFloppy ? "Insert Disk" : "Close Tray");
+  SetMenuItemInfo(_menu, IDM_CD_OPEN_TRAY, false, &info);
+  info.dwTypeData = (LPSTR)(_isDriveFloppy ? "Floppy Drive" : "CD-ROM");
+  SetMenuItemInfo(GetSubMenu(_menu, 0), CDROM_MENU_INDEX, true, &info);
   EnableMenuItem(_cdRomMenu, IDM_CD_OPEN_TRAY, MF_DISABLED);
 
   size_t menuItemCount = GetMenuItemCount(_cdRomMenu);
   while (menuItemCount > 1)
     DeleteMenu(_cdRomMenu, --menuItemCount, MF_BYPOSITION);
+#endif
 
   return true;
 }
@@ -1618,7 +1626,7 @@ bool Application::isPaused() const
 
 void Application::onRotationChanged(Video::Rotation oldRotation, Video::Rotation newRotation)
 {
-#ifdef _WIN32
+#ifndef RA_HOST_QT
   const Uint32 fullscreen = SDL_GetWindowFlags(_window) & SDL_WINDOW_FULLSCREEN_DESKTOP;
 #else
   const bool fullscreen = _host->isFullscreen();
@@ -1660,7 +1668,7 @@ void Application::s_audioCallback(void* udata, Uint8* stream, int len)
         {
           // some cores don't generate audio when fast forwarding
         }
-#ifdef _WIN32
+#ifndef RA_HOST_QT
         else if (SDL_GL_GetSwapInterval() == 1)
         {
           // try turning off VSYNC to see if we can achieve the target framerate
@@ -1670,7 +1678,7 @@ void Application::s_audioCallback(void* udata, Uint8* stream, int len)
 #endif
         else
         {
-#ifdef _WIN32
+#ifndef RA_HOST_QT
           app->pauseForBadPerformance();
 #else
           // No "turn vsync off first" step: the Qt host fixed the swap interval at
@@ -1694,7 +1702,7 @@ void Application::s_audioCallback(void* udata, Uint8* stream, int len)
         if (app->_config.getFastForwarding())
           ++app->_audioGeneratedDuringFastForward;
       }
-#ifdef _WIN32
+#ifndef RA_HOST_QT
       else if (app->_vsyncDisabledByAudioFaults)
       {
         if (++app->_numAudioRecoveries == 5)
@@ -1775,16 +1783,26 @@ void Application::loadGame()
   }
 }
 
+// The four functions below keep the Win32 menu's items in step with the application. The Qt menu bar has no
+// items to keep: each menu is built from Application's state when it opens (hostMenuState, menu/HostMenu.cpp).
+
 void Application::enableItems(const UINT* items, size_t count, UINT enable)
 {
+#ifndef RA_HOST_QT
   for (size_t i = 0; i < count; i++, items++)
   {
     EnableMenuItem(_menu, *items, enable);
   }
+#else
+  (void)items;
+  (void)count;
+  (void)enable;
+#endif
 }
 
 void Application::enableSlots()
 {
+#ifndef RA_HOST_QT
   UINT enabled = hardcore() ? MF_DISABLED : MF_ENABLED;
   
   for (unsigned ndx = 1; ndx <= 10; ndx++)
@@ -1798,10 +1816,12 @@ void Application::enableSlots()
       EnableMenuItem(_menu, IDM_LOAD_STATE_1 + ndx - 1, MF_DISABLED);
     }
   }
+#endif
 }
 
 void Application::enableRecent()
 {
+#ifndef RA_HOST_QT
   size_t i = 0;
 
   for (; i < _recentList.size(); i++)
@@ -1848,6 +1868,7 @@ void Application::enableRecent()
     info.dwTypeData = (char*)"Empty";
     SetMenuItemInfo(_menu, id, false, &info);
   }
+#endif
 }
 
 void Application::toggleTray()
@@ -1908,6 +1929,7 @@ void Application::readyDisc(unsigned newDiscIndex)
 
 void Application::updateDiscMenu(bool updateLabels)
 {
+#ifndef RA_HOST_QT
   size_t i = 0;
   size_t coreDiscCount = _core.getNumDiscs();
 
@@ -1969,6 +1991,9 @@ void Application::updateDiscMenu(bool updateLabels)
 
     EnableMenuItem(_menu, IDM_CD_OPEN_TRAY, MF_ENABLED);
   }
+#else
+  (void)updateLabels;
+#endif
 }
 
 std::string Application::getDiscLabel(unsigned index) const
@@ -2172,13 +2197,14 @@ void Application::screenshot()
 
 void Application::aboutDialog()
 {
-#ifdef _WIN32
+#ifndef RA_HOST_QT
   ::aboutDialog(_logger.contents().c_str());
 #else
-  host::aboutDialog(_logger.contents().c_str()); // About.cpp's Win32 dialog template has no Linux body
+  host::aboutDialog(_logger.contents().c_str()); // the host's own, in place of About.cpp's dialog template
 #endif
 }
 
+#ifndef RA_HOST_QT
 static void buildSystemMenu(HMENU parentMenu, int system, std::string systemName)
 {
   std::set<std::string> systemCores;
@@ -2197,9 +2223,11 @@ static void buildSystemMenu(HMENU parentMenu, int system, std::string systemName
 
   AppendMenu(parentMenu, MF_POPUP | MF_STRING, (UINT_PTR)systemMenu, systemName.c_str());
 }
+#endif
 
 void Application::buildSystemsMenu()
 {
+#ifndef RA_HOST_QT // the Qt menu bar lists the systems when File opens (hostMenuState)
   std::set<int> availableSystems;
   getAvailableSystems(availableSystems);
   if (availableSystems.empty())
@@ -2258,6 +2286,7 @@ void Application::buildSystemsMenu()
     for (const auto& pair : systemMap)
       buildSystemMenu(systemsMenu, pair.second, pair.first);
   }
+#endif
 }
 
 void Application::loadConfiguration(int* window_x, int* window_y, int* window_width, int* window_height)
@@ -2277,10 +2306,13 @@ void Application::loadConfiguration(int* window_x, int* window_y, int* window_wi
       RecentItem item;
       int x, y;
       int w, h;
+      bool hasX, hasY; // the Qt host saves no position where the window system keeps it to itself
     };
 
     Deserialize ud;
     ud.self = this;
+    ud.x = ud.y = ud.w = ud.h = 0; // a configuration saved in fullscreen has no "window" at all
+    ud.hasX = ud.hasY = false;
 
     jsonsax_parse((char*)data, &ud, [](void* udata, jsonsax_event_t event, const char* str, size_t num)
     {
@@ -2350,6 +2382,7 @@ void Application::loadConfiguration(int* window_x, int* window_y, int* window_wi
       else if (ud->key == "window" && event == JSONSAX_OBJECT)
       {
         ud->x = ud->y = ud->w = ud->h = 0;
+        ud->hasX = ud->hasY = false;
 
         jsonsax_result_t res2 = jsonsax_parse((char*)str, ud, [](void* udata, jsonsax_event_t event, const char* str, size_t num)
         {
@@ -2362,9 +2395,15 @@ void Application::loadConfiguration(int* window_x, int* window_y, int* window_wi
           else if (event == JSONSAX_NUMBER)
           {
             if (ud->key == "x")
+            {
               ud->x = (int)strtoul(str, NULL, 10);
+              ud->hasX = true;
+            }
             else if (ud->key == "y")
+            {
               ud->y = (int)strtoul(str, NULL, 10);
+              ud->hasY = true;
+            }
             else if (ud->key == "w")
               ud->w = (int)strtoul(str, NULL, 10);
             else if (ud->key == "h")
@@ -2414,8 +2453,11 @@ void Application::loadConfiguration(int* window_x, int* window_y, int* window_wi
     if (ud.w > 0 && ud.h > 0)
     {
       _logger.debug(TAG "Remembered window position %d,%d (%dx%d)", ud.x, ud.y, ud.w, ud.h);
-      *window_x = ud.x;
-      *window_y = ud.y;
+      if (ud.hasX && ud.hasY)
+      {
+        *window_x = ud.x;
+        *window_y = ud.y;
+      }
       *window_width = ud.w;
       *window_height = ud.h;
     }
@@ -2457,7 +2499,7 @@ std::string Application::serializeRecentList()
 
 void Application::resizeWindow(unsigned multiplier)
 {
-#ifdef _WIN32
+#ifndef RA_HOST_QT
   Uint32 fullscreen = SDL_GetWindowFlags(_window) & SDL_WINDOW_FULLSCREEN_DESKTOP;
 #else
   const bool fullscreen = _host->isFullscreen();
@@ -2486,7 +2528,7 @@ void Application::resizeWindow(unsigned multiplier)
 
 void Application::resizeWindow(int width, int height)
 {
-#ifdef _WIN32
+#ifndef RA_HOST_QT
   int actual_width, actual_height;
   SDL_SetWindowSize(_window, width, height);
 
@@ -2506,7 +2548,7 @@ void Application::resizeWindow(int width, int height)
 
 void Application::toggleFullscreen()
 {
-#ifdef _WIN32
+#ifndef RA_HOST_QT
   Uint32 fullscreen = SDL_GetWindowFlags(_window) & SDL_WINDOW_FULLSCREEN_DESKTOP;
   if (fullscreen)
   {
@@ -2530,7 +2572,7 @@ void Application::toggleFullscreen()
 
 void Application::handle(const SDL_SysWMEvent* syswm)
 {
-#ifdef _WIN32
+#ifndef RA_HOST_QT
   if (syswm->msg->msg.win.msg == WM_COMMAND)
     handleCommand(LOWORD(syswm->msg->msg.win.wParam));
 #else
@@ -2538,8 +2580,8 @@ void Application::handle(const SDL_SysWMEvent* syswm)
 #endif
 }
 
-// A menu command. On Windows it arrives as WM_COMMAND through the handler
-// above; off Windows the native menu bar calls it directly (Task 7).
+// A menu command. From the Win32 menu it arrives as WM_COMMAND through the
+// handler above; the Qt menu bar calls it directly.
 void Application::handleCommand(unsigned cmd)
 {
     switch (cmd)
@@ -2948,14 +2990,14 @@ void Application::handle(const KeyBinds::Action action, unsigned extra)
 
 void Application::updateMouseCapture()
 {
-#ifdef _WIN32
+#ifndef RA_HOST_QT
   SDL_SetRelativeMouseMode(_keybinds.hasGameFocus() && _config.getGameFocusCaptureMouse() ? SDL_TRUE : SDL_FALSE);
 #else
-  // Qt 6 has no pointer lock: game-focus mouse capture is unavailable on Linux.
+  // Qt 6 has no pointer lock: game-focus mouse capture is unavailable under the Qt host.
   static bool warned = false;
   if (_keybinds.hasGameFocus() && _config.getGameFocusCaptureMouse() && !warned)
   {
-    _logger.warn(TAG "Mouse capture is not available on Linux (Qt has no pointer lock)");
+    _logger.warn(TAG "Mouse capture is not available under the Qt host (Qt has no pointer lock)");
     warned = true;
   }
 #endif
@@ -2963,7 +3005,7 @@ void Application::updateMouseCapture()
 
 void Application::toggleFastForwarding(unsigned extra)
 {
-#ifdef _WIN32
+#ifndef RA_HOST_QT
   // get the current fast forward selection
   MENUITEMINFO info;
   memset(&info, 0, sizeof(info));
@@ -2972,7 +3014,7 @@ void Application::toggleFastForwarding(unsigned extra)
   GetMenuItemInfo(_menu, IDM_TURBO_GAME, false, &info);
   const bool checked = (info.fState == MFS_CHECKED);
 #else
-  // the selection Windows keeps as the Turbo item's check mark
+  // the selection the Win32 menu keeps as the Turbo item's check mark
   const bool checked = _turboSelected;
 #endif
 
@@ -2988,7 +3030,7 @@ void Application::toggleFastForwarding(unsigned extra)
 
     case 2: // FF toggle pressed - switch to opposite of selection (and change selection)
       _config.setFastForwarding(!checked);
-#ifdef _WIN32
+#ifndef RA_HOST_QT
       info.fState = checked ? MFS_UNCHECKED : MFS_CHECKED;
       SetMenuItemInfo(_menu, IDM_TURBO_GAME, false, &info);
 #else
@@ -3037,12 +3079,14 @@ void Application::setBackgroundInput(bool enabled)
 {
   SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, enabled ? "1" : "0");
 
+#ifndef RA_HOST_QT
   MENUITEMINFO info;
   memset(&info, 0, sizeof(info));
   info.cbSize = sizeof(info);
   info.fMask = MIIM_STATE;
   info.fState = enabled ? MFS_CHECKED : MFS_UNCHECKED;
   SetMenuItemInfo(_menu, IDM_INPUT_BACKGROUND_INPUT, false, &info);
+#endif
 }
 
 bool Application::handleArgs(int argc, char* argv[])

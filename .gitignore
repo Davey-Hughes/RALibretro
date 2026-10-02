@@ -13,5 +13,6 @@
 /bin64
 /obj
 /src/RA_BuildVer.h
+/build*/
 
 .vscode

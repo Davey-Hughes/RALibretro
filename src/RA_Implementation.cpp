@@ -8,7 +8,7 @@
 
 #include "RA_BuildVer.h"
 
-#ifndef _WIN32
+#ifdef RA_HOST_QT
 #include "host/HostServices.h"
 
 // RA_InstallHostDispatcher's post function. The toolkit calls it from any
@@ -29,13 +29,13 @@ void pauseEmulator();
 void resumeEmulator();
 void reset();
 void loadROM(const char* path);
-#ifndef _WIN32
+#ifdef RA_HOST_QT
 void rebuildRAMenu();
 int captureScreen(int* width, int* height, const void** pixels, int* stride);
 #endif
 
 
-#ifdef _WIN32
+#ifndef RA_HOST_QT
 // returns -1 if not found
 int GetMenuItemIndex(HMENU hMenu, const char* ItemName)
 {
@@ -81,7 +81,7 @@ void CausePause()
 //  Perform whatever function in the case of needing to rebuild the menu.
 void RebuildMenu()
 {
-#ifdef _WIN32
+#ifndef RA_HOST_QT
   HMENU mainMenu = GetMenu(g_mainWindow);
   if (!mainMenu) return;
   
@@ -94,8 +94,8 @@ void RebuildMenu()
   AppendMenu(mainMenu, MF_POPUP | MF_STRING, (UINT_PTR)RA_CreatePopupMenu(), TEXT("&RetroAchievements"));
   InvalidateRect(g_mainWindow, NULL, TRUE);
   DrawMenuBar(g_mainWindow);
-#endif
-#ifndef _WIN32
+#else
+  // the Qt menu bar builds the RetroAchievements menu from RA_GetPopupMenuItems when it next opens
   rebuildRAMenu();
 #endif
 }
@@ -129,12 +129,15 @@ void RA_Init(HWND hWnd)
   // provide callbacks to the DLL
   RA_InstallSharedFunctions(NULL, &CauseUnpause, &CausePause, &RebuildMenu, &GetEstimatedGameTitle, &ResetEmulation, &LoadROM);
 
-#ifndef _WIN32
+#ifdef RA_HOST_QT
   // the toolkit's worker threads hand the callbacks above back to this thread through Qt's event loop
+  // (the Win32 DLL has a dispatching window of its own, and its loader ignores this)
   RA_InstallHostDispatcher(&PostToMainThread);
 
-  // and the game picture for achievement screenshots, which Windows' toolkit BitBlts from the window itself
+#ifndef _WIN32
+  // and the game picture for achievement screenshots, which the Win32 DLL BitBlts from the window itself
   RA_InstallScreenCapture(&captureScreen);
+#endif
 #endif
 
   // add a placeholder menu item and start the login process - menu will be updated when login completes
